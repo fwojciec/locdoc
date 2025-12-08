@@ -19,13 +19,14 @@ fi
 # Fetch and check if there are new commits
 git fetch origin beads-metadata --quiet
 
-local_head=$(git rev-parse HEAD)
 remote_metadata=$(git rev-parse origin/beads-metadata)
 merge_base=$(git merge-base HEAD origin/beads-metadata 2>/dev/null || echo "")
 
 # If beads-metadata has commits not in main, merge them
 if [ -n "$merge_base" ] && [ "$merge_base" != "$remote_metadata" ]; then
     echo "Syncing beads-metadata into main..."
+    # Discard local .beads changes (they're already in beads-metadata)
+    git checkout .beads/ 2>/dev/null || true
     git merge origin/beads-metadata --no-edit --quiet
     echo "Beads metadata synced."
 fi
