@@ -1,0 +1,77 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build artifacts
+/locdoc
+/dist/
+/build/
+cmd/locdoc/locdoc
+
+# Test coverage
+coverage.txt
+coverage.html
+coverage.out
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Credentials
+*.pem
+*.key
+
+# Nix
+.direnv/
+result
+result-*
+.nix-*
+
+# Go profiling files
+*.prof
+
+# CI artifacts
+test-results/
+junit-report.xml
+test-results.json
+
+# Beads local database (cache, not the JSONL source of truth)
+.beads/beads.db
