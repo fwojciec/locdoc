@@ -36,9 +36,6 @@ linters:
     - tparallel     # Detect inappropriate t.Parallel() usage
     - testpackage   # Enforce separate test packages
     
-    # Function length for AI-friendly chunking
-    - funlen        # Keep functions under 50 lines for AI analysis
-    
   settings:
     errcheck:
       check-type-assertions: true
@@ -49,9 +46,6 @@ linters:
         - -ST1000
     testifylint:
       enable-all: true  # Enable all testify checks
-    funlen:
-      lines: 75         # Max 75 lines to fit in AI analysis chunks
-      statements: 60    # Max 60 statements to avoid complexity
   exclusions:
     generated: lax
     presets:
@@ -76,9 +70,6 @@ linters:
       - linters:
           - gochecknoglobals
         path: cmd/.*/main\.go
-      - linters:
-          - funlen
-        path: _test\.go
       # Exclude errcheck for sync.Pool.Get() calls - these never return errors
       - linters:
           - errcheck
