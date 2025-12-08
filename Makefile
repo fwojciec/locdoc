@@ -1,4 +1,4 @@
-.PHONY: validate test lint fmt vet tidy help ready hooks
+.PHONY: validate test lint fmt vet tidy help ready
 
 ## Primary target - run before completing any task
 validate: fmt vet tidy lint test ## Run all validation checks
@@ -30,11 +30,6 @@ ready: ## Show tasks with no blockers
 
 list: ## List all beads tasks
 	@bd list
-
-## Git hooks
-hooks: ## Install git hooks
-	@ln -sf ../../scripts/post-merge .git/hooks/post-merge
-	@echo "✓ Git hooks installed"
 
 ## Help
 help: ## Show this help
