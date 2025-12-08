@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/fwojciec/locdoc"
@@ -109,7 +110,7 @@ func TestProjectService_FindProjects(t *testing.T) {
 		// Create multiple projects
 		for i := 0; i < 3; i++ {
 			project := &locdoc.Project{
-				Name:      "project-" + string(rune('a'+i)),
+				Name:      fmt.Sprintf("project-%c", 'a'+i),
 				SourceURL: "https://example.com/docs",
 			}
 			require.NoError(t, svc.CreateProject(ctx, project))
@@ -150,7 +151,7 @@ func TestProjectService_FindProjects(t *testing.T) {
 		// Create 5 projects
 		for i := 0; i < 5; i++ {
 			project := &locdoc.Project{
-				Name:      "project-" + string(rune('a'+i)),
+				Name:      fmt.Sprintf("project-%c", 'a'+i),
 				SourceURL: "https://example.com/docs",
 			}
 			require.NoError(t, svc.CreateProject(ctx, project))

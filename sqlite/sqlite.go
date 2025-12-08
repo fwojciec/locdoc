@@ -35,6 +35,12 @@ func (db *DB) Open() error {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
+	// Enable foreign key constraints
+	if _, err := conn.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		conn.Close()
+		return fmt.Errorf("failed to enable foreign keys: %w", err)
+	}
+
 	db.db = conn
 
 	// Create schema

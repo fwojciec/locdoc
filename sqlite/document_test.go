@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/fwojciec/locdoc"
@@ -121,7 +122,7 @@ func TestDocumentService_FindDocuments(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			doc := &locdoc.Document{
 				ProjectID: project.ID,
-				SourceURL: "https://example.com/docs/page" + string(rune('1'+i)),
+				SourceURL: fmt.Sprintf("https://example.com/docs/page%d", i+1),
 			}
 			require.NoError(t, svc.CreateDocument(ctx, doc))
 		}
@@ -191,7 +192,7 @@ func TestDocumentService_FindDocuments(t *testing.T) {
 		for i := 0; i < 5; i++ {
 			doc := &locdoc.Document{
 				ProjectID: project.ID,
-				SourceURL: "https://example.com/docs/page" + string(rune('1'+i)),
+				SourceURL: fmt.Sprintf("https://example.com/docs/page%d", i+1),
 			}
 			require.NoError(t, svc.CreateDocument(ctx, doc))
 		}
@@ -308,7 +309,7 @@ func TestDocumentService_DeleteDocumentsByProject(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			doc := &locdoc.Document{
 				ProjectID: p1.ID,
-				SourceURL: "https://example.com/p1/doc" + string(rune('1'+i)),
+				SourceURL: fmt.Sprintf("https://example.com/p1/doc%d", i+1),
 			}
 			require.NoError(t, svc.CreateDocument(ctx, doc))
 		}

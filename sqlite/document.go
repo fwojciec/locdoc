@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
+	"fmt"
 	"strings"
 	"time"
 
@@ -78,7 +79,11 @@ func (s *DocumentService) FindDocumentByID(ctx context.Context, id string) (*loc
 		return nil, err
 	}
 
-	doc.FetchedAt, _ = time.Parse(time.RFC3339, fetchedAt)
+	var parseErr error
+	doc.FetchedAt, parseErr = time.Parse(time.RFC3339, fetchedAt)
+	if parseErr != nil {
+		return nil, fmt.Errorf("failed to parse fetched_at: %w", parseErr)
+	}
 
 	return &doc, nil
 }
@@ -130,7 +135,11 @@ func (s *DocumentService) FindDocuments(ctx context.Context, filter locdoc.Docum
 			return nil, err
 		}
 
-		doc.FetchedAt, _ = time.Parse(time.RFC3339, fetchedAt)
+		var parseErr error
+		doc.FetchedAt, parseErr = time.Parse(time.RFC3339, fetchedAt)
+		if parseErr != nil {
+			return nil, fmt.Errorf("failed to parse fetched_at: %w", parseErr)
+		}
 
 		docs = append(docs, &doc)
 	}
@@ -153,8 +162,8 @@ func (s *DocumentService) UpdateDocument(ctx context.Context, id string, upd loc
 	if upd.Content != nil {
 		doc.Content = *upd.Content
 		doc.ContentHash = hashContent(doc.Content)
-	}
-	if upd.ContentHash != nil {
+	} else if upd.ContentHash != nil {
+		// Only allow explicit hash override if content wasn't updated
 		doc.ContentHash = *upd.ContentHash
 	}
 

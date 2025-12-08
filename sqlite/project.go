@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
@@ -62,8 +63,15 @@ func (s *ProjectService) FindProjectByID(ctx context.Context, id string) (*locdo
 		return nil, err
 	}
 
-	project.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
-	project.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	var parseErr error
+	project.CreatedAt, parseErr = time.Parse(time.RFC3339, createdAt)
+	if parseErr != nil {
+		return nil, fmt.Errorf("failed to parse created_at: %w", parseErr)
+	}
+	project.UpdatedAt, parseErr = time.Parse(time.RFC3339, updatedAt)
+	if parseErr != nil {
+		return nil, fmt.Errorf("failed to parse updated_at: %w", parseErr)
+	}
 
 	return &project, nil
 }
@@ -111,8 +119,15 @@ func (s *ProjectService) FindProjects(ctx context.Context, filter locdoc.Project
 			return nil, err
 		}
 
-		project.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
-		project.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+		var parseErr error
+		project.CreatedAt, parseErr = time.Parse(time.RFC3339, createdAt)
+		if parseErr != nil {
+			return nil, fmt.Errorf("failed to parse created_at: %w", parseErr)
+		}
+		project.UpdatedAt, parseErr = time.Parse(time.RFC3339, updatedAt)
+		if parseErr != nil {
+			return nil, fmt.Errorf("failed to parse updated_at: %w", parseErr)
+		}
 
 		projects = append(projects, &project)
 	}
