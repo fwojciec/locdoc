@@ -207,6 +207,32 @@ func TestProjectService_UpdateProject(t *testing.T) {
 		require.Error(t, err)
 		assert.Equal(t, locdoc.ENOTFOUND, locdoc.ErrorCode(err))
 	})
+
+	t.Run("returns EINVALID when update results in invalid project", func(t *testing.T) {
+		t.Parallel()
+
+		db := setupTestDB(t)
+		svc := sqlite.NewProjectService(db)
+		ctx := context.Background()
+
+		// Create a valid project first
+		project := &locdoc.Project{
+			Name:      "test-project",
+			SourceURL: "https://example.com/docs",
+		}
+		require.NoError(t, svc.CreateProject(ctx, project))
+
+		// Try to update with empty name
+		emptyName := ""
+		_, err := svc.UpdateProject(ctx, project.ID, locdoc.ProjectUpdate{Name: &emptyName})
+		require.Error(t, err)
+		assert.Equal(t, locdoc.EINVALID, locdoc.ErrorCode(err))
+
+		// Verify original project is unchanged
+		found, err := svc.FindProjectByID(ctx, project.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "test-project", found.Name)
+	})
 }
 
 func TestProjectService_DeleteProject(t *testing.T) {

@@ -167,6 +167,11 @@ func (s *DocumentService) UpdateDocument(ctx context.Context, id string, upd loc
 		doc.ContentHash = *upd.ContentHash
 	}
 
+	// Validate before persisting (defense-in-depth)
+	if err := doc.Validate(); err != nil {
+		return nil, err
+	}
+
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE documents
 		SET title = ?, content = ?, content_hash = ?

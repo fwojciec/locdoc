@@ -154,6 +154,11 @@ func (s *ProjectService) UpdateProject(ctx context.Context, id string, upd locdo
 		project.LocalPath = *upd.LocalPath
 	}
 
+	// Validate before persisting
+	if err := project.Validate(); err != nil {
+		return nil, err
+	}
+
 	project.UpdatedAt = time.Now().UTC()
 
 	_, err = s.db.ExecContext(ctx, `
