@@ -31,6 +31,7 @@ func NewSitemapService(client *http.Client) *SitemapService {
 }
 
 // DiscoverURLs finds all URLs from a site's sitemap.
+// Returns an empty slice (not nil) if no sitemaps are found.
 func (s *SitemapService) DiscoverURLs(ctx context.Context, baseURL string, filter *locdoc.URLFilter) ([]string, error) {
 	// Check for context cancellation early
 	if err := ctx.Err(); err != nil {
@@ -56,14 +57,21 @@ func (s *SitemapService) DiscoverURLs(ctx context.Context, baseURL string, filte
 
 	// Process all sitemaps and collect URLs
 	var allURLs []string
-	seen := make(map[string]bool)
+	seenSitemaps := make(map[string]bool)
+	seenURLs := make(map[string]bool)
 
 	for _, sitemapURL := range sitemapURLs {
-		urls, err := s.processSitemap(ctx, sitemapURL, seen)
+		urls, err := s.processSitemap(ctx, sitemapURL, seenSitemaps)
 		if err != nil {
 			return nil, err
 		}
-		allURLs = append(allURLs, urls...)
+		// Deduplicate URLs across sitemaps
+		for _, u := range urls {
+			if !seenURLs[u] {
+				seenURLs[u] = true
+				allURLs = append(allURLs, u)
+			}
+		}
 	}
 
 	// Apply filter
@@ -93,7 +101,11 @@ func (s *SitemapService) findSitemapURLs(ctx context.Context, base *url.URL) ([]
 	sitemapURL := base.ResolveReference(&url.URL{Path: "/sitemap.xml"})
 	exists, err := s.urlExists(ctx, sitemapURL.String())
 	if err != nil {
-		return nil, err
+		// Propagate context errors, treat other errors as "not found"
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, nil
 	}
 	if exists {
 		return []string{sitemapURL.String()}, nil

@@ -224,6 +224,43 @@ func TestSitemapService_DiscoverURLs_NoSitemapFound(t *testing.T) {
 	assert.Empty(t, urls)
 }
 
+func TestSitemapService_DiscoverURLs_DeduplicatesURLsAcrossSitemaps(t *testing.T) {
+	t.Parallel()
+
+	// Two sitemaps with overlapping URLs
+	robotsTxt := `Sitemap: {{BASE}}/sitemap1.xml
+Sitemap: {{BASE}}/sitemap2.xml
+`
+	sitemap1 := `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{{BASE}}/shared</loc></url>
+  <url><loc>{{BASE}}/unique1</loc></url>
+</urlset>`
+
+	sitemap2 := `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{{BASE}}/shared</loc></url>
+  <url><loc>{{BASE}}/unique2</loc></url>
+</urlset>`
+
+	srv := newTestServer(t, map[string]string{
+		"/robots.txt":   robotsTxt,
+		"/sitemap1.xml": sitemap1,
+		"/sitemap2.xml": sitemap2,
+	})
+	defer srv.Close()
+
+	svc := locdochttp.NewSitemapService(srv.Client())
+	urls, err := svc.DiscoverURLs(context.Background(), srv.URL, nil)
+
+	require.NoError(t, err)
+	// Should have 3 unique URLs, not 4 (shared appears in both sitemaps)
+	assert.Len(t, urls, 3)
+	assert.Contains(t, urls, srv.URL+"/shared")
+	assert.Contains(t, urls, srv.URL+"/unique1")
+	assert.Contains(t, urls, srv.URL+"/unique2")
+}
+
 // newTestServer creates a test HTTP server with the given path->content mapping.
 // Content strings may contain {{BASE}} which is replaced with the server URL.
 func newTestServer(t *testing.T, content map[string]string) *httptest.Server {
