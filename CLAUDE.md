@@ -75,11 +75,7 @@ git checkout -b locdoc-XXXX  # Create branch named after task
 bd update locdoc-XXXX -s closed  # Mark complete when done
 ```
 
-**Daemon**: The beads daemon with `--auto-commit` syncs metadata changes directly to main:
-```bash
-bd daemon --status                      # Check if running
-bd daemon --stop && bd daemon --start --auto-commit  # Restart with auto-commit
-```
+**Sync**: Git hooks handle syncing `.beads/` changes with your commits automatically.
 
 ## Writing Issues
 
