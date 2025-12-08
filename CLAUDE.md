@@ -160,10 +160,35 @@ locdoc/
 
 **TDD is mandatory** - write failing tests first, then implement.
 
-**Approach**:
-- Use `_test` package suffix to enforce public API testing
-- Use `require` for setup, `assert` for assertions
-- Tests should pass with `go test -race ./...`
+**Package Convention**:
+- All tests MUST use external test packages: `package foo_test` (not `package foo`)
+- This enforces testing through the public API only
+- Linter (`testpackage`) will fail on tests in the same package
+
+**Parallel Tests**:
+- All tests MUST call `t.Parallel()` at the start of:
+  - Every top-level test function
+  - Every subtest (`t.Run` callback)
+- Linter (`paralleltest`) will fail on missing parallel calls
+
+**Example Pattern**:
+```go
+package sqlite_test  // External test package
+
+func TestFoo(t *testing.T) {
+    t.Parallel()  // Required
+
+    t.Run("subtest", func(t *testing.T) {
+        t.Parallel()  // Also required
+        // test code...
+    })
+}
+```
+
+**Assertions**:
+- Use `require` for setup (fails fast)
+- Use `assert` for test assertions (continues on failure)
+- Use `assert.Empty(t, slice)` not `assert.Len(t, slice, 0)`
 
 **Placement**: Add tests alongside implementation. Use `mock/` package for isolating components.
 
