@@ -75,11 +75,30 @@ git checkout -b locdoc-XXXX  # Create branch named after task
 bd update locdoc-XXXX -s closed  # Mark complete when done
 ```
 
-**Beads Metadata Branch**: Beads is configured with `sync-branch: "beads-metadata"` in `.beads/config.yaml`. Issue metadata commits go to the `beads-metadata` branch (via git worktree), keeping feature branches clean. Periodically merge metadata to main:
+**Beads Metadata Branch**: Beads is configured with `sync-branch: "beads-metadata"` in `.beads/config.yaml`. Issue metadata commits go to the `beads-metadata` branch (via git worktree), keeping feature branches clean.
+
+**Daemon Management**:
+```bash
+bd daemon --status                      # Check if running
+bd daemon --stop && bd daemon --start --auto-commit  # Restart with auto-commit
+```
+
+The daemon with `--auto-commit` automatically commits metadata changes to `beads-metadata`. Without it, run `bd sync` manually.
+
+**Periodic Sync**: A post-merge hook auto-syncs beads-metadata into main after pulls/merges. Install with:
+```bash
+make hooks
+```
+
+Manual sync if needed:
 ```bash
 git fetch origin beads-metadata
 git merge origin/beads-metadata --no-edit  # On main branch
 ```
+
+**Local Changes**: If `.beads/issues.jsonl` shows as modified after `bd update`, it's because main is behind `beads-metadata`. Either:
+- Discard: `git checkout .beads/issues.jsonl` (change is in beads-metadata)
+- Merge: sync beads-metadata to main as above
 
 ## "Land This Plane" Procedure
 
