@@ -96,12 +96,22 @@ When completing any task:
 
 **Important**: After completing a task, always pause and wait for user confirmation before starting the next task. This allows the user to manage context, review changes, or provide feedback.
 
+## Skills
+
+Use the `go-standard-package-layout` skill when:
+- Creating new packages or files
+- Deciding where new code belongs
+- Naming packages or files
+- Tempted to create concept-named packages (e.g., `fetcher/`, `processor/`)
+- Adding new domain types or service interfaces
+- Wiring dependencies in main
+
+The skill provides decision trees and examples for applying Ben Johnson's pattern consistently.
+
 ## Reference Documentation
 
 - [docs/extracting-documentation-links.md](docs/extracting-documentation-links.md) - Crawling research (Katana, go-trafilatura)
 - [docs/local-rag.md](docs/local-rag.md) - RAG implementation research (sqlite-vec, embeddings)
-- [docs/ben-johnson-standard-package-layout.md](docs/ben-johnson-standard-package-layout.md) - Architecture reference
-- `docs/workflow.md` - Beads workflow details (when created)
 - `.claude/commands/` - Specialized workflows
 
 ## File Structure
