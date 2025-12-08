@@ -6,11 +6,11 @@ validate: fmt vet tidy lint test ## Run all validation checks
 
 ## Testing
 test: ## Run tests with race detector
-	@test -z "$$(find . -name '*.go' -not -path './vendor/*' 2>/dev/null | head -1)" || go test -race ./...
+	go test -race ./...
 
 ## Linting
 lint: ## Run golangci-lint
-	@test -z "$$(find . -name '*.go' -not -path './vendor/*' 2>/dev/null | head -1)" || golangci-lint run ./...
+	golangci-lint run ./...
 
 ## Formatting
 fmt: ## Run gofmt
@@ -18,7 +18,7 @@ fmt: ## Run gofmt
 
 ## Vet
 vet: ## Run go vet
-	@test -z "$$(find . -name '*.go' -not -path './vendor/*' 2>/dev/null | head -1)" || go vet ./...
+	go vet ./...
 
 ## Tidy
 tidy: ## Ensure go.mod is tidy

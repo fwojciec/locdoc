@@ -46,17 +46,49 @@ bd ready          # Show tasks with no blockers
 bd list           # Show all tasks
 ```
 
+## Beads Task Tracking
+
+This project uses [beads](https://github.com/steveyegge/beads) for task tracking.
+
+**Essential Commands**:
+```bash
+bd ready              # Show tasks with no blockers (start here)
+bd list               # Show all tasks
+bd show <id>          # Show task details
+bd create "title"     # Create new task
+bd update <id> -s closed  # Mark task complete
+bd dep add <id> <blocker-id> --type blocks  # Add dependency
+```
+
+**Task IDs**: Use `locdoc-XXXX` format (e.g., `locdoc-hw3`).
+
+**Discovering Work**:
+```bash
+bd ready --json       # Machine-readable ready tasks
+```
+
+**Branch Workflow**:
+```bash
+bd ready              # Find next task
+git checkout -b locdoc-XXXX  # Create branch named after task
+# ... work on task ...
+bd update locdoc-XXXX -s closed  # Mark complete when done
+```
+
 ## "Land This Plane" Procedure
 
 When completing any task:
 
 1. `make validate` - must pass
 2. Clean up temporary files
-3. `bd update <task-id> --status done --reason "Completed: <summary>"`
+3. `bd update <task-id> -s closed` - mark task complete
 4. `git add -p && git commit` - atomic commit on `locdoc-XXXX` branch
 5. `git push -u origin locdoc-XXXX` - push branch
 6. Create PR via `gh pr create`
-7. `bd ready` - check what's next
+7. **STOP and wait for user** - pause to allow context window management
+8. `bd ready` - check what's next (after user confirms to continue)
+
+**Important**: After completing a task, always pause and wait for user confirmation before starting the next task. This allows the user to manage context, review changes, or provide feedback.
 
 ## Reference Documentation
 
