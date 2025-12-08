@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting
+        run: |
+          UNFORMATTED=$(gofmt -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo '::error title=Format Error::Go code is not formatted. Run "go fmt ./..."'
+            echo "$UNFORMATTED" | while read -r file; do
+              echo "::error file=$file::File needs formatting"
+            done
+            exit 1
+          fi
+          echo '✅ All files properly formatted'
+
+      - name: Run go vet
+        run: |
+          if ! go vet ./... 2>&1; then
+            echo '::error title=Vet Error::go vet found issues'
+            exit 1
+          fi
+          echo '✅ go vet passed'
+
+      - name: Check go mod tidy
+        run: |
+          go mod tidy
+          if [ -n "$(git status --porcelain go.mod go.sum)" ]; then
+            echo '::error title=Module Error::go.mod or go.sum is not tidy. Run "go mod tidy"'
+            git diff go.mod go.sum || true
+            exit 1
+          fi
+          echo '✅ go.mod is tidy'
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.7
+
+      - name: Run tests
+        run: |
+          if ! go test -race ./...; then
+            echo '::error title=Test Failures::Tests failed'
+            exit 1
+          fi
+          echo '✅ All tests passed'
