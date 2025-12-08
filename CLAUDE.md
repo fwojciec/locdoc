@@ -75,6 +75,12 @@ git checkout -b locdoc-XXXX  # Create branch named after task
 bd update locdoc-XXXX -s closed  # Mark complete when done
 ```
 
+**Protected Branches**: Beads is configured with `protected_branches=true`. Issue metadata commits go to the `beads-metadata` branch (via git worktree), keeping main clean for PR-based workflow. Periodically merge metadata to main:
+```bash
+git fetch origin beads-metadata
+git merge origin/beads-metadata --no-edit  # On main branch
+```
+
 ## "Land This Plane" Procedure
 
 When completing any task:
