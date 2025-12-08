@@ -48,7 +48,7 @@ bd list           # Show all tasks
 
 ## Beads Task Tracking
 
-This project uses [beads](https://github.com/steveyegge/beads) for task tracking.
+This project uses [beads](https://github.com/steveyegge/beads) for task tracking (not GitHub Issues).
 
 **Essential Commands**:
 ```bash
@@ -81,32 +81,62 @@ bd daemon --status                      # Check if running
 bd daemon --stop && bd daemon --start --auto-commit  # Restart with auto-commit
 ```
 
-## "Land This Plane" Procedure
+## Writing Issues
 
-When completing any task:
+Issues should be easy to complete. Include three elements:
 
-1. `make validate` - must pass
-2. Clean up temporary files
-3. `bd update <task-id> -s closed` - mark task complete
-4. `git add -p && git commit` - atomic commit on `locdoc-XXXX` branch
-5. `git push -u origin locdoc-XXXX` - push branch
-6. Create PR via `gh pr create`
-7. **STOP and wait for user** - pause to allow context window management
-8. `bd ready` - check what's next (after user confirms to continue)
+**Template**:
+```
+## Problem
+[What needs to be fixed/added - high level description]
 
-**Important**: After completing a task, always pause and wait for user confirmation before starting the next task. This allows the user to manage context, review changes, or provide feedback.
+## Entrypoints
+- [File or function where work starts]
+- [Related files if known]
+
+## Validation
+- [ ] Specific testable outcome
+- [ ] `make validate` passes
+```
+
+**Principles**:
+- Write **what** needs doing, not **how**
+- One issue = one PR
+- Reference specific files to reduce discovery time
 
 ## Skills
 
-Use the `go-standard-package-layout` skill when:
+### Project-Specific
+
+**`go-standard-package-layout`** - Use when:
 - Creating new packages or files
 - Deciding where new code belongs
 - Naming packages or files
 - Tempted to create concept-named packages (e.g., `fetcher/`, `processor/`)
-- Adding new domain types or service interfaces
-- Wiring dependencies in main
 
-The skill provides decision trees and examples for applying Ben Johnson's pattern consistently.
+### Development Workflows (Superpowers)
+
+**`superpowers:test-driven-development`** - Use when:
+- Starting work on any issue
+- Implementing any feature or bugfix
+- Write test first, watch it fail, then implement
+
+**`superpowers:systematic-debugging`** - Use when:
+- Encountering any bug or unexpected behavior
+- Before proposing fixes - understand root cause first
+
+**`superpowers:finishing-a-development-branch`** - Use when:
+- Implementation complete and tests pass
+- Ready to create PR or merge
+
+**`superpowers:receiving-code-review`** - Use when:
+- Addressing PR feedback
+- Before implementing suggestions - verify they're technically sound
+
+**`superpowers:verification-before-completion`** - Use when:
+- About to claim work is complete
+- Before committing or creating PRs
+- Evidence before assertions
 
 ## Reference Documentation
 
