@@ -79,6 +79,8 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return m.runAdd(ctx, cmdArgs, stdout, stderr)
 	case "list":
 		return m.runList(ctx, stdout, stderr)
+	case "delete":
+		return m.runDelete(ctx, cmdArgs, stdout, stderr)
 	case "crawl":
 		return m.runCrawl(ctx, cmdArgs, stdout, stderr)
 	default:
@@ -91,9 +93,10 @@ func (m *Main) usage(w io.Writer) error {
 	fmt.Fprintln(w, "usage: locdoc <command> [args]")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Commands:")
-	fmt.Fprintln(w, "  add <name> <url>   Register a documentation project")
-	fmt.Fprintln(w, "  list               List all registered projects")
-	fmt.Fprintln(w, "  crawl [name]       Crawl documentation for all or one project")
+	fmt.Fprintln(w, "  add <name> <url>       Register a documentation project")
+	fmt.Fprintln(w, "  list                   List all registered projects")
+	fmt.Fprintln(w, "  delete <name> --force  Delete a project and its documents")
+	fmt.Fprintln(w, "  crawl [name]           Crawl documentation for all or one project")
 	return fmt.Errorf("invalid usage")
 }
 
@@ -109,6 +112,14 @@ func (m *Main) runList(ctx context.Context, stdout, stderr io.Writer) error {
 	code := CmdList(ctx, stdout, stderr, m.ProjectService)
 	if code != 0 {
 		return fmt.Errorf("list command failed")
+	}
+	return nil
+}
+
+func (m *Main) runDelete(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	code := CmdDelete(ctx, args, stdout, stderr, m.ProjectService)
+	if code != 0 {
+		return fmt.Errorf("delete command failed")
 	}
 	return nil
 }
@@ -351,4 +362,52 @@ func findDocumentByURL(ctx context.Context, docs locdoc.DocumentService, project
 func computeHash(content string) string {
 	h := xxhash.Sum64String(content)
 	return fmt.Sprintf("%x", h)
+}
+
+// CmdDelete handles the "delete" command to remove a project.
+func CmdDelete(ctx context.Context, args []string, stdout, stderr io.Writer, projects locdoc.ProjectService) int {
+	var name string
+	var force bool
+
+	// Parse arguments - allow --force in any position
+	for _, arg := range args {
+		if arg == "--force" {
+			force = true
+		} else if name == "" {
+			name = arg
+		}
+	}
+
+	if name == "" {
+		fmt.Fprintln(stderr, "usage: locdoc delete <name> --force")
+		return 1
+	}
+
+	// Find project by name
+	list, err := projects.FindProjects(ctx, locdoc.ProjectFilter{Name: &name})
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
+		return 1
+	}
+	if len(list) == 0 {
+		fmt.Fprintf(stderr, "error: project %q not found\n", name)
+		return 1
+	}
+
+	project := list[0]
+
+	// Require --force flag
+	if !force {
+		fmt.Fprintf(stderr, "error: use --force to confirm deletion of project %q\n", name)
+		return 1
+	}
+
+	// Delete project
+	if err := projects.DeleteProject(ctx, project.ID); err != nil {
+		fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
+		return 1
+	}
+
+	fmt.Fprintf(stdout, "Deleted project %q\n", name)
+	return 0
 }
