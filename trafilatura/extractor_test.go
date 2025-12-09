@@ -251,6 +251,7 @@ func main() {
 		_, err := ext.Extract("")
 
 		require.Error(t, err)
+		assert.Equal(t, locdoc.EINVALID, locdoc.ErrorCode(err))
 	})
 
 	t.Run("handles minimal valid HTML", func(t *testing.T) {

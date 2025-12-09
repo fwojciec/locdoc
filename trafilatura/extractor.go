@@ -2,7 +2,6 @@ package trafilatura
 
 import (
 	"bytes"
-	"errors"
 	"strings"
 
 	"github.com/fwojciec/locdoc"
@@ -24,7 +23,7 @@ func NewExtractor() *Extractor {
 // Extract processes raw HTML and returns the main content.
 func (e *Extractor) Extract(rawHTML string) (*locdoc.ExtractResult, error) {
 	if rawHTML == "" {
-		return nil, errors.New("empty HTML input")
+		return nil, locdoc.Errorf(locdoc.EINVALID, "empty HTML input")
 	}
 
 	opts := trafilatura.Options{
