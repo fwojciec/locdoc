@@ -12,6 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// testContext returns a background context for tests.
+func testContext() context.Context {
+	return context.Background()
+}
+
 func TestCmdAdd(t *testing.T) {
 	t.Parallel()
 
@@ -30,7 +35,7 @@ func TestCmdAdd(t *testing.T) {
 		stdout := &bytes.Buffer{}
 		stderr := &bytes.Buffer{}
 
-		code := main.CmdAdd([]string{"myproject", "https://example.com/docs"}, stdout, stderr, projectSvc)
+		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs"}, stdout, stderr, projectSvc)
 
 		assert.Equal(t, 0, code)
 		assert.Contains(t, stdout.String(), "Added project")
@@ -47,7 +52,7 @@ func TestCmdAdd(t *testing.T) {
 		stdout := &bytes.Buffer{}
 		stderr := &bytes.Buffer{}
 
-		code := main.CmdAdd([]string{"onlyname"}, stdout, stderr, nil)
+		code := main.CmdAdd(testContext(), []string{"onlyname"}, stdout, stderr, nil)
 
 		assert.Equal(t, 1, code)
 		assert.Contains(t, stderr.String(), "usage:")
@@ -60,7 +65,7 @@ func TestCmdAdd(t *testing.T) {
 		stdout := &bytes.Buffer{}
 		stderr := &bytes.Buffer{}
 
-		code := main.CmdAdd([]string{}, stdout, stderr, nil)
+		code := main.CmdAdd(testContext(), []string{}, stdout, stderr, nil)
 
 		assert.Equal(t, 1, code)
 		assert.Contains(t, stderr.String(), "usage:")
@@ -78,7 +83,7 @@ func TestCmdAdd(t *testing.T) {
 		stdout := &bytes.Buffer{}
 		stderr := &bytes.Buffer{}
 
-		code := main.CmdAdd([]string{"existing", "https://example.com"}, stdout, stderr, projectSvc)
+		code := main.CmdAdd(testContext(), []string{"existing", "https://example.com"}, stdout, stderr, projectSvc)
 
 		assert.Equal(t, 1, code)
 		assert.Contains(t, stderr.String(), "error:")
@@ -104,7 +109,7 @@ func TestCmdList(t *testing.T) {
 		stdout := &bytes.Buffer{}
 		stderr := &bytes.Buffer{}
 
-		code := main.CmdList(stdout, stderr, projectSvc)
+		code := main.CmdList(testContext(), stdout, stderr, projectSvc)
 
 		assert.Equal(t, 0, code)
 		assert.Contains(t, stdout.String(), "project-one")
@@ -125,7 +130,7 @@ func TestCmdList(t *testing.T) {
 		stdout := &bytes.Buffer{}
 		stderr := &bytes.Buffer{}
 
-		code := main.CmdList(stdout, stderr, projectSvc)
+		code := main.CmdList(testContext(), stdout, stderr, projectSvc)
 
 		assert.Equal(t, 0, code)
 		assert.Contains(t, stdout.String(), "No projects")
@@ -144,7 +149,7 @@ func TestCmdList(t *testing.T) {
 		stdout := &bytes.Buffer{}
 		stderr := &bytes.Buffer{}
 
-		code := main.CmdList(stdout, stderr, projectSvc)
+		code := main.CmdList(testContext(), stdout, stderr, projectSvc)
 
 		assert.Equal(t, 1, code)
 		assert.Contains(t, stderr.String(), "error:")
@@ -211,6 +216,7 @@ func TestCmdCrawl(t *testing.T) {
 		stderr := &bytes.Buffer{}
 
 		code := main.CmdCrawl(
+			testContext(),
 			[]string{projectName},
 			stdout, stderr,
 			projectSvc, documentSvc,
@@ -237,6 +243,7 @@ func TestCmdCrawl(t *testing.T) {
 		stderr := &bytes.Buffer{}
 
 		code := main.CmdCrawl(
+			testContext(),
 			[]string{"nonexistent"},
 			stdout, stderr,
 			projectSvc, nil, nil, nil, nil, nil,
@@ -299,6 +306,7 @@ func TestCmdCrawl(t *testing.T) {
 		stderr := &bytes.Buffer{}
 
 		code := main.CmdCrawl(
+			testContext(),
 			[]string{},
 			stdout, stderr,
 			projectSvc, documentSvc,
@@ -323,6 +331,7 @@ func TestCmdCrawl(t *testing.T) {
 		stderr := &bytes.Buffer{}
 
 		code := main.CmdCrawl(
+			testContext(),
 			[]string{},
 			stdout, stderr,
 			projectSvc, nil, nil, nil, nil, nil,

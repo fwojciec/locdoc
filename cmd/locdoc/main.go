@@ -66,6 +66,7 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 	if err := m.DB.Open(); err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
+	defer m.Close()
 
 	// Wire services
 	m.ProjectService = sqlite.NewProjectService(m.DB)
@@ -96,23 +97,23 @@ func (m *Main) usage(w io.Writer) error {
 	return fmt.Errorf("invalid usage")
 }
 
-func (m *Main) runAdd(_ context.Context, args []string, stdout, stderr io.Writer) error {
-	code := CmdAdd(args, stdout, stderr, m.ProjectService)
+func (m *Main) runAdd(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	code := CmdAdd(ctx, args, stdout, stderr, m.ProjectService)
 	if code != 0 {
 		return fmt.Errorf("add command failed")
 	}
 	return nil
 }
 
-func (m *Main) runList(_ context.Context, stdout, stderr io.Writer) error {
-	code := CmdList(stdout, stderr, m.ProjectService)
+func (m *Main) runList(ctx context.Context, stdout, stderr io.Writer) error {
+	code := CmdList(ctx, stdout, stderr, m.ProjectService)
 	if code != 0 {
 		return fmt.Errorf("list command failed")
 	}
 	return nil
 }
 
-func (m *Main) runCrawl(_ context.Context, args []string, stdout, stderr io.Writer) error {
+func (m *Main) runCrawl(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	// Wire crawl dependencies
 	sitemapSvc := lochttp.NewSitemapService(nil)
 	fetcher, err := rod.NewFetcher()
@@ -123,7 +124,7 @@ func (m *Main) runCrawl(_ context.Context, args []string, stdout, stderr io.Writ
 	extractor := trafilatura.NewExtractor()
 	converter := htmltomarkdown.NewConverter()
 
-	code := CmdCrawl(args, stdout, stderr, m.ProjectService, m.DocumentService, sitemapSvc, fetcher, extractor, converter)
+	code := CmdCrawl(ctx, args, stdout, stderr, m.ProjectService, m.DocumentService, sitemapSvc, fetcher, extractor, converter)
 	if code != 0 {
 		return fmt.Errorf("crawl command failed")
 	}
@@ -144,7 +145,7 @@ func defaultDBPath() string {
 }
 
 // CmdAdd handles the "add" command to register a new project.
-func CmdAdd(args []string, stdout, stderr io.Writer, projects locdoc.ProjectService) int {
+func CmdAdd(ctx context.Context, args []string, stdout, stderr io.Writer, projects locdoc.ProjectService) int {
 	if len(args) != 2 {
 		fmt.Fprintln(stderr, "usage: locdoc add <name> <url>")
 		return 1
@@ -157,7 +158,6 @@ func CmdAdd(args []string, stdout, stderr io.Writer, projects locdoc.ProjectServ
 		SourceURL: url,
 	}
 
-	ctx := context.Background()
 	if err := projects.CreateProject(ctx, project); err != nil {
 		fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
 		return 1
@@ -168,8 +168,7 @@ func CmdAdd(args []string, stdout, stderr io.Writer, projects locdoc.ProjectServ
 }
 
 // CmdList handles the "list" command to show all registered projects.
-func CmdList(stdout, stderr io.Writer, projects locdoc.ProjectService) int {
-	ctx := context.Background()
+func CmdList(ctx context.Context, stdout, stderr io.Writer, projects locdoc.ProjectService) int {
 	list, err := projects.FindProjects(ctx, locdoc.ProjectFilter{})
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
@@ -193,6 +192,7 @@ func CmdList(stdout, stderr io.Writer, projects locdoc.ProjectService) int {
 
 // CmdCrawl handles the "crawl" command to crawl documentation for projects.
 func CmdCrawl(
+	ctx context.Context,
 	args []string,
 	stdout, stderr io.Writer,
 	projects locdoc.ProjectService,
@@ -202,7 +202,6 @@ func CmdCrawl(
 	extractor locdoc.Extractor,
 	converter locdoc.Converter,
 ) int {
-	ctx := context.Background()
 
 	// Determine which projects to crawl
 	var projectList []*locdoc.Project
