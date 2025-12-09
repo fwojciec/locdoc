@@ -1,3 +1,5 @@
+// Package htmltomarkdown provides HTML to Markdown conversion
+// using JohannesKaufmann/html-to-markdown.
 package htmltomarkdown
 
 import (
