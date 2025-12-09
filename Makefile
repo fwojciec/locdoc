@@ -1,12 +1,19 @@
-.PHONY: validate test lint fmt vet tidy help ready
+.PHONY: validate validate-all test integration lint fmt vet tidy help ready
 
 ## Primary target - run before completing any task
 validate: fmt vet tidy lint test ## Run all validation checks
 	@echo "✓ All validation checks passed"
 
+## Full validation including integration tests
+validate-all: validate integration ## Run all checks including integration tests
+	@echo "✓ All validation checks passed (including integration)"
+
 ## Testing
 test: ## Run tests with race detector
 	go test -race ./...
+
+integration: ## Run integration tests (requires network, Chrome)
+	go test -race -tags=integration ./...
 
 ## Linting
 lint: ## Run golangci-lint
