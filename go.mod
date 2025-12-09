@@ -3,6 +3,7 @@ module github.com/fwojciec/locdoc
 go 1.25.5
 
 require (
+	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.0
 	github.com/beevik/etree v1.6.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/go-rod/rod v0.116.2
@@ -10,12 +11,13 @@ require (
 	github.com/markusmobius/go-trafilatura v1.12.2
 	github.com/ncruces/go-sqlite3 v0.30.3
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/net v0.30.0
+	golang.org/x/net v0.47.0
 )
 
 require (
+	github.com/JohannesKaufmann/dom v0.2.0 // indirect
 	github.com/RadhiFadlillah/whatlanggo v0.0.0-20240916001553-aac1f0f737fc // indirect
-	github.com/andybalholm/cascadia v1.3.2 // indirect
+	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/elliotchance/pie/v2 v2.9.0 // indirect
