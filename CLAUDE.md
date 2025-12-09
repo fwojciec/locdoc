@@ -109,6 +109,7 @@ Issues should be easy to complete. Include three elements:
 - Deciding where new code belongs
 - Naming packages or files
 - Tempted to create concept-named packages (e.g., `fetcher/`, `processor/`)
+- Writing new mocks or adding methods to existing mocks in `mock/`
 
 ### Development Workflows (Superpowers)
 
