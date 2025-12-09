@@ -3,6 +3,7 @@ module github.com/fwojciec/locdoc
 go 1.25.5
 
 require (
+	github.com/beevik/etree v1.6.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/google/uuid v1.6.0
 	github.com/ncruces/go-sqlite3 v0.30.3
