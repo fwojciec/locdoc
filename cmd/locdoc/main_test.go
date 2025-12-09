@@ -341,3 +341,147 @@ func TestCmdCrawl(t *testing.T) {
 		assert.Contains(t, stderr.String(), "No projects")
 	})
 }
+
+func TestCmdDelete(t *testing.T) {
+	t.Parallel()
+
+	t.Run("deletes project by name", func(t *testing.T) {
+		t.Parallel()
+
+		var deletedID string
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				if filter.Name != nil && *filter.Name == "myproject" {
+					return []*locdoc.Project{
+						{ID: "proj-123", Name: "myproject", SourceURL: "https://example.com"},
+					}, nil
+				}
+				return nil, nil
+			},
+			DeleteProjectFn: func(ctx context.Context, id string) error {
+				deletedID = id
+				return nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdDelete(testContext(), []string{"myproject", "--force"}, stdout, stderr, projectSvc)
+
+		assert.Equal(t, 0, code)
+		assert.Equal(t, "proj-123", deletedID)
+		assert.Contains(t, stdout.String(), "Deleted")
+		assert.Contains(t, stdout.String(), "myproject")
+		assert.Empty(t, stderr.String())
+	})
+
+	t.Run("returns error for missing name argument", func(t *testing.T) {
+		t.Parallel()
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdDelete(testContext(), []string{}, stdout, stderr, nil)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "usage:")
+		assert.Empty(t, stdout.String())
+	})
+
+	t.Run("returns error when project not found", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				return []*locdoc.Project{}, nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdDelete(testContext(), []string{"nonexistent", "--force"}, stdout, stderr, projectSvc)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "not found")
+		assert.Empty(t, stdout.String())
+	})
+
+	t.Run("returns error when delete fails", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				return []*locdoc.Project{
+					{ID: "proj-123", Name: "myproject", SourceURL: "https://example.com"},
+				}, nil
+			},
+			DeleteProjectFn: func(ctx context.Context, id string) error {
+				return locdoc.Errorf(locdoc.EINTERNAL, "database error")
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdDelete(testContext(), []string{"myproject", "--force"}, stdout, stderr, projectSvc)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "error:")
+		assert.Empty(t, stdout.String())
+	})
+
+	t.Run("requires force flag without confirmation", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				return []*locdoc.Project{
+					{ID: "proj-123", Name: "myproject", SourceURL: "https://example.com"},
+				}, nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		// No --force flag
+		code := main.CmdDelete(testContext(), []string{"myproject"}, stdout, stderr, projectSvc)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "--force")
+		assert.Empty(t, stdout.String())
+	})
+
+	t.Run("allows force flag before project name", func(t *testing.T) {
+		t.Parallel()
+
+		var deletedID string
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				if filter.Name != nil && *filter.Name == "myproject" {
+					return []*locdoc.Project{
+						{ID: "proj-123", Name: "myproject", SourceURL: "https://example.com"},
+					}, nil
+				}
+				return nil, nil
+			},
+			DeleteProjectFn: func(ctx context.Context, id string) error {
+				deletedID = id
+				return nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		// --force before project name
+		code := main.CmdDelete(testContext(), []string{"--force", "myproject"}, stdout, stderr, projectSvc)
+
+		assert.Equal(t, 0, code)
+		assert.Equal(t, "proj-123", deletedID)
+		assert.Contains(t, stdout.String(), "Deleted")
+		assert.Empty(t, stderr.String())
+	})
+}
