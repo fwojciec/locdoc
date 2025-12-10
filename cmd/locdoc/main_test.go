@@ -5,7 +5,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/fwojciec/locdoc"
 	main "github.com/fwojciec/locdoc/cmd/locdoc"
@@ -493,6 +495,130 @@ func TestCmdCrawl(t *testing.T) {
 
 		assert.Equal(t, 1, code)
 		assert.Contains(t, stderr.String(), "No projects")
+	})
+}
+
+func TestCmdCrawl_ConcurrentFetching(t *testing.T) {
+	t.Parallel()
+
+	t.Run("preserves position ordering with concurrent fetches", func(t *testing.T) {
+		t.Parallel()
+
+		projectName := "myproject"
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				if filter.Name != nil && *filter.Name == projectName {
+					return []*locdoc.Project{
+						{ID: "proj-1", Name: projectName, SourceURL: "https://example.com"},
+					}, nil
+				}
+				return nil, nil
+			},
+		}
+
+		var createdDocs []*locdoc.Document
+		var mu sync.Mutex
+		documentSvc := &mock.DocumentService{
+			FindDocumentsFn: func(ctx context.Context, filter locdoc.DocumentFilter) ([]*locdoc.Document, error) {
+				return nil, nil // No existing docs
+			},
+			CreateDocumentFn: func(ctx context.Context, doc *locdoc.Document) error {
+				mu.Lock()
+				defer mu.Unlock()
+				doc.ID = "doc-" + doc.SourceURL
+				createdDocs = append(createdDocs, doc)
+				return nil
+			},
+		}
+
+		// Return 5 URLs to test concurrent processing
+		urls := []string{
+			"https://example.com/page1",
+			"https://example.com/page2",
+			"https://example.com/page3",
+			"https://example.com/page4",
+			"https://example.com/page5",
+		}
+		sitemapSvc := &mock.SitemapService{
+			DiscoverURLsFn: func(ctx context.Context, baseURL string, filter *locdoc.URLFilter) ([]string, error) {
+				return urls, nil
+			},
+		}
+
+		// Track fetch order to verify concurrency
+		var fetchOrder []string
+		var fetchMu sync.Mutex
+		fetcher := &mock.Fetcher{
+			FetchFn: func(ctx context.Context, url string) (string, error) {
+				// Different delays to force out-of-order completion
+				// page5 finishes first, page1 finishes last
+				delays := map[string]time.Duration{
+					"https://example.com/page1": 50 * time.Millisecond,
+					"https://example.com/page2": 40 * time.Millisecond,
+					"https://example.com/page3": 30 * time.Millisecond,
+					"https://example.com/page4": 20 * time.Millisecond,
+					"https://example.com/page5": 10 * time.Millisecond,
+				}
+				time.Sleep(delays[url])
+				fetchMu.Lock()
+				fetchOrder = append(fetchOrder, url)
+				fetchMu.Unlock()
+				return "<html><body><h1>Test</h1><p>Content for " + url + "</p></body></html>", nil
+			},
+			CloseFn: func() error { return nil },
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test Page", ContentHTML: "<p>Content</p>"}, nil
+			},
+		}
+
+		converter := &mock.Converter{
+			ConvertFn: func(html string) (string, error) {
+				return "# Content\n\nSome text for " + html, nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		start := time.Now()
+		code := main.CmdCrawl(
+			testContext(),
+			[]string{projectName},
+			stdout, stderr,
+			projectSvc, documentSvc,
+			sitemapSvc, fetcher, extractor, converter,
+		)
+		elapsed := time.Since(start)
+
+		assert.Equal(t, 0, code)
+		assert.Empty(t, stderr.String())
+		require.Len(t, createdDocs, 5)
+
+		// Verify positions are preserved based on original URL order, not fetch completion order
+		positionByURL := make(map[string]int)
+		for _, doc := range createdDocs {
+			positionByURL[doc.SourceURL] = doc.Position
+		}
+
+		assert.Equal(t, 0, positionByURL["https://example.com/page1"])
+		assert.Equal(t, 1, positionByURL["https://example.com/page2"])
+		assert.Equal(t, 2, positionByURL["https://example.com/page3"])
+		assert.Equal(t, 3, positionByURL["https://example.com/page4"])
+		assert.Equal(t, 4, positionByURL["https://example.com/page5"])
+
+		// Verify concurrent execution by checking total time
+		// Sequential would take 50+40+30+20+10 = 150ms minimum
+		// Concurrent should take ~50ms (longest single fetch)
+		// Allow some buffer for test execution overhead
+		assert.Less(t, elapsed, 120*time.Millisecond, "crawl should execute concurrently, took %v", elapsed)
+
+		// Verify fetch order is NOT sequential (proves concurrency)
+		fetchMu.Lock()
+		defer fetchMu.Unlock()
+		assert.NotEqual(t, urls, fetchOrder, "fetches should complete out of order due to different delays")
 	})
 }
 

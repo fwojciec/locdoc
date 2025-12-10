@@ -15,6 +15,7 @@ import (
 	"github.com/fwojciec/locdoc/rod"
 	"github.com/fwojciec/locdoc/sqlite"
 	"github.com/fwojciec/locdoc/trafilatura"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/genai"
 )
 
@@ -316,6 +317,17 @@ func CmdCrawl(
 	return 0
 }
 
+// crawlResult holds the result of fetching and processing a single URL.
+type crawlResult struct {
+	position int
+	url      string
+	title    string
+	markdown string
+	hash     string
+	err      error
+	errStage string // "fetch", "extract", or "convert"
+}
+
 func crawlProject(
 	ctx context.Context,
 	project *locdoc.Project,
@@ -334,40 +346,39 @@ func crawlProject(
 
 	fmt.Fprintf(stdout, "  Found %d URLs\n", len(urls))
 
-	// Process each URL
+	// Fetch and process URLs concurrently with bounded concurrency
+	const maxConcurrency = 20
+	results := make([]crawlResult, len(urls))
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrency)
+
 	for i, url := range urls {
-		fmt.Fprintf(stdout, "  [%d/%d] %s\n", i+1, len(urls), url)
+		i, url := i, url // capture loop variables
+		g.Go(func() error {
+			results[i] = processURL(gctx, i, url, fetcher, extractor, converter)
+			return nil // never return error to allow all goroutines to complete
+		})
+	}
 
-		// Fetch HTML
-		html, err := fetcher.Fetch(ctx, url)
-		if err != nil {
-			fmt.Fprintf(stderr, "    skip (fetch failed): %v\n", err)
+	// Wait for all fetches to complete
+	_ = g.Wait()
+
+	// Process results in order (preserving position)
+	for i, result := range results {
+		fmt.Fprintf(stdout, "  [%d/%d] %s\n", i+1, len(urls), result.url)
+
+		if result.err != nil {
+			fmt.Fprintf(stderr, "    skip (%s failed): %v\n", result.errStage, result.err)
 			continue
 		}
-
-		// Extract main content
-		result, err := extractor.Extract(html)
-		if err != nil {
-			fmt.Fprintf(stderr, "    skip (extract failed): %v\n", err)
-			continue
-		}
-
-		// Convert to markdown
-		markdown, err := converter.Convert(result.ContentHTML)
-		if err != nil {
-			fmt.Fprintf(stderr, "    skip (convert failed): %v\n", err)
-			continue
-		}
-
-		// Compute content hash
-		hash := computeHash(markdown)
 
 		// Check if document already exists with same hash
-		existing, _ := findDocumentByURL(ctx, documents, project.ID, url)
-		if existing != nil && existing.ContentHash == hash {
+		existing, _ := findDocumentByURL(ctx, documents, project.ID, result.url)
+		if existing != nil && existing.ContentHash == result.hash {
 			// Content unchanged, but check if position changed
-			if existing.Position != i {
-				position := i
+			if existing.Position != result.position {
+				position := result.position
 				if _, err := documents.UpdateDocument(ctx, existing.ID, locdoc.DocumentUpdate{
 					Position: &position,
 				}); err != nil {
@@ -384,16 +395,16 @@ func crawlProject(
 		// Create or update document
 		doc := &locdoc.Document{
 			ProjectID:   project.ID,
-			SourceURL:   url,
-			Title:       result.Title,
-			Content:     markdown,
-			ContentHash: hash,
-			Position:    i,
+			SourceURL:   result.url,
+			Title:       result.title,
+			Content:     result.markdown,
+			ContentHash: result.hash,
+			Position:    result.position,
 		}
 
 		if existing != nil {
 			// Update existing
-			position := i
+			position := result.position
 			if _, err := documents.UpdateDocument(ctx, existing.ID, locdoc.DocumentUpdate{
 				Title:       &doc.Title,
 				Content:     &doc.Content,
@@ -415,6 +426,51 @@ func crawlProject(
 	}
 
 	return nil
+}
+
+// processURL fetches and processes a single URL, returning the result.
+func processURL(
+	ctx context.Context,
+	position int,
+	url string,
+	fetcher locdoc.Fetcher,
+	extractor locdoc.Extractor,
+	converter locdoc.Converter,
+) crawlResult {
+	result := crawlResult{
+		position: position,
+		url:      url,
+	}
+
+	// Fetch HTML
+	html, err := fetcher.Fetch(ctx, url)
+	if err != nil {
+		result.err = err
+		result.errStage = "fetch"
+		return result
+	}
+
+	// Extract main content
+	extracted, err := extractor.Extract(html)
+	if err != nil {
+		result.err = err
+		result.errStage = "extract"
+		return result
+	}
+
+	// Convert to markdown
+	markdown, err := converter.Convert(extracted.ContentHTML)
+	if err != nil {
+		result.err = err
+		result.errStage = "convert"
+		return result
+	}
+
+	result.title = extracted.Title
+	result.markdown = markdown
+	result.hash = computeHash(markdown)
+
+	return result
 }
 
 func findDocumentByURL(ctx context.Context, docs locdoc.DocumentService, projectID, url string) (*locdoc.Document, error) {
