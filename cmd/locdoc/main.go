@@ -463,31 +463,6 @@ func crawlProject(
 			continue
 		}
 
-		// Check if document already exists with same hash
-		existing, _ := findDocumentByURL(ctx, documents, project.ID, result.url)
-		if existing != nil && existing.ContentHash == result.hash {
-			// Content unchanged, but check if position changed
-			if existing.Position != result.position {
-				position := result.position
-				if _, err := documents.UpdateDocument(ctx, existing.ID, locdoc.DocumentUpdate{
-					Position: &position,
-				}); err != nil {
-					fmt.Fprintf(stderr, "  error updating position for %s: %v\n", result.url, err)
-					continue
-				}
-			}
-			// Count unchanged docs in stats too
-			savedCount++
-			totalBytes += len(result.markdown)
-			if tokenCounter != nil {
-				if tokens, err := tokenCounter.CountTokens(ctx, result.markdown); err == nil {
-					totalTokens += tokens
-				}
-			}
-			continue
-		}
-
-		// Create or update document
 		doc := &locdoc.Document{
 			ProjectID:   project.ID,
 			SourceURL:   result.url,
@@ -497,24 +472,9 @@ func crawlProject(
 			Position:    result.position,
 		}
 
-		if existing != nil {
-			// Update existing
-			position := result.position
-			if _, err := documents.UpdateDocument(ctx, existing.ID, locdoc.DocumentUpdate{
-				Title:       &doc.Title,
-				Content:     &doc.Content,
-				ContentHash: &doc.ContentHash,
-				Position:    &position,
-			}); err != nil {
-				fmt.Fprintf(stderr, "  error updating %s: %v\n", result.url, err)
-				continue
-			}
-		} else {
-			// Create new
-			if err := documents.CreateDocument(ctx, doc); err != nil {
-				fmt.Fprintf(stderr, "  error creating %s: %v\n", result.url, err)
-				continue
-			}
+		if err := documents.CreateDocument(ctx, doc); err != nil {
+			fmt.Fprintf(stderr, "  error creating %s: %v\n", result.url, err)
+			continue
 		}
 
 		// Accumulate stats
@@ -601,17 +561,6 @@ func processURL(
 	result.hash = computeHash(markdown)
 
 	return result
-}
-
-func findDocumentByURL(ctx context.Context, docs locdoc.DocumentService, projectID, url string) (*locdoc.Document, error) {
-	list, err := docs.FindDocuments(ctx, locdoc.DocumentFilter{
-		ProjectID: &projectID,
-		SourceURL: &url,
-	})
-	if err != nil || len(list) == 0 {
-		return nil, err
-	}
-	return list[0], nil
 }
 
 func computeHash(content string) string {

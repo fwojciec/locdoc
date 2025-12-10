@@ -152,47 +152,6 @@ func (s *DocumentService) FindDocuments(ctx context.Context, filter locdoc.Docum
 	return docs, rows.Err()
 }
 
-// UpdateDocument updates an existing document.
-func (s *DocumentService) UpdateDocument(ctx context.Context, id string, upd locdoc.DocumentUpdate) (*locdoc.Document, error) {
-	// First check if document exists
-	doc, err := s.FindDocumentByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	// Apply updates
-	if upd.Title != nil {
-		doc.Title = *upd.Title
-	}
-	if upd.Content != nil {
-		doc.Content = *upd.Content
-		doc.ContentHash = hashContent(doc.Content)
-	} else if upd.ContentHash != nil {
-		// Only allow explicit hash override if content wasn't updated
-		doc.ContentHash = *upd.ContentHash
-	}
-	if upd.Position != nil {
-		doc.Position = *upd.Position
-	}
-
-	// Validate before persisting (defense-in-depth)
-	if err := doc.Validate(); err != nil {
-		return nil, err
-	}
-
-	_, err = s.db.ExecContext(ctx, `
-		UPDATE documents
-		SET title = ?, content = ?, content_hash = ?, position = ?
-		WHERE id = ?
-	`, doc.Title, doc.Content, doc.ContentHash, doc.Position, id)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return doc, nil
-}
-
 // DeleteDocument permanently removes a document.
 func (s *DocumentService) DeleteDocument(ctx context.Context, id string) error {
 	result, err := s.db.ExecContext(ctx, "DELETE FROM documents WHERE id = ?", id)

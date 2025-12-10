@@ -41,10 +41,6 @@ type DocumentService interface {
 	// FindDocuments retrieves documents matching the filter.
 	FindDocuments(ctx context.Context, filter DocumentFilter) ([]*Document, error)
 
-	// UpdateDocument updates an existing document.
-	// Returns ENOTFOUND if document does not exist.
-	UpdateDocument(ctx context.Context, id string, upd DocumentUpdate) (*Document, error)
-
 	// DeleteDocument permanently removes a document and all associated chunks.
 	// Returns ENOTFOUND if document does not exist.
 	DeleteDocument(ctx context.Context, id string) error
@@ -63,12 +59,4 @@ type DocumentFilter struct {
 	Limit  int `json:"limit"`
 
 	SortBy string `json:"sortBy"` // "position" or "fetched_at"
-}
-
-// DocumentUpdate represents fields that can be updated on a document.
-type DocumentUpdate struct {
-	Title       *string `json:"title"`
-	Content     *string `json:"content"`
-	ContentHash *string `json:"contentHash"`
-	Position    *int    `json:"position"`
 }
