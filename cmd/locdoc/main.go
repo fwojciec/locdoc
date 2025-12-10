@@ -112,6 +112,7 @@ func (m *Main) printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  add <name> <url>       Add and crawl a documentation project")
 	fmt.Fprintln(w, "      --filter <regex>   Filter URLs by regex (can be repeated)")
 	fmt.Fprintln(w, "      --preview          Show URLs without creating project")
+	fmt.Fprintln(w, "      --force            Delete existing project first")
 	fmt.Fprintln(w, "  list                   List all registered projects")
 	fmt.Fprintln(w, "  delete <name> --force  Delete a project and its documents")
 	fmt.Fprintln(w, "  crawl [name]           Crawl documentation for all or one project")
@@ -262,6 +263,7 @@ type AddOptions struct {
 	Name    string
 	URL     string
 	Preview bool
+	Force   bool
 	Filters []string
 }
 
@@ -282,6 +284,8 @@ func ParseAddArgs(args []string) (*AddOptions, error) {
 		switch arg {
 		case "--preview":
 			opts.Preview = true
+		case "--force":
+			opts.Force = true
 		case "--filter":
 			if i+1 >= len(args) {
 				return nil, fmt.Errorf("--filter requires a pattern argument")
@@ -294,13 +298,13 @@ func ParseAddArgs(args []string) (*AddOptions, error) {
 			} else if opts.URL == "" {
 				opts.URL = arg
 			} else {
-				return nil, fmt.Errorf("unexpected argument: %q\nusage: locdoc add <name> <url> [--preview] [--filter <pattern>...]", arg)
+				return nil, fmt.Errorf("unexpected argument: %q\nusage: locdoc add <name> <url> [--preview] [--force] [--filter <pattern>...]", arg)
 			}
 		}
 	}
 
 	if opts.Name == "" || opts.URL == "" {
-		return nil, fmt.Errorf("usage: locdoc add <name> <url> [--preview] [--filter <pattern>...]")
+		return nil, fmt.Errorf("usage: locdoc add <name> <url> [--preview] [--force] [--filter <pattern>...]")
 	}
 
 	return opts, nil
@@ -343,6 +347,21 @@ func CmdAdd(ctx context.Context, args []string, stdout, stderr io.Writer, projec
 			fmt.Fprintln(stdout, u)
 		}
 		return 0
+	}
+
+	// With --force, delete existing project first
+	if opts.Force {
+		existing, err := projects.FindProjects(ctx, locdoc.ProjectFilter{Name: &opts.Name})
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
+			return 1
+		}
+		if len(existing) > 0 {
+			if err := projects.DeleteProject(ctx, existing[0].ID); err != nil {
+				fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
+				return 1
+			}
+		}
 	}
 
 	project := &locdoc.Project{
