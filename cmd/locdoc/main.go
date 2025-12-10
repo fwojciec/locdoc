@@ -93,8 +93,6 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return m.runList(ctx, stdout, stderr)
 	case "delete":
 		return m.runDelete(ctx, cmdArgs, stdout, stderr)
-	case "crawl":
-		return m.runCrawl(ctx, cmdArgs, stdout, stderr)
 	case "docs":
 		return m.runDocs(ctx, cmdArgs, stdout, stderr)
 	case "ask":
@@ -115,7 +113,6 @@ func (m *Main) printUsage(w io.Writer) {
 	fmt.Fprintln(w, "      --force            Delete existing project first")
 	fmt.Fprintln(w, "  list                   List all registered projects")
 	fmt.Fprintln(w, "  delete <name> --force  Delete a project and its documents")
-	fmt.Fprintln(w, "  crawl [name]           Crawl documentation for all or one project")
 	fmt.Fprintln(w, "  docs <name> [--full]   List documents for a project (--full for content)")
 	fmt.Fprintln(w, "  ask <name> \"<question>\" Ask a question about project documentation")
 }
@@ -221,29 +218,6 @@ func (m *Main) runAsk(ctx context.Context, args []string, stdout, stderr io.Writ
 }
 
 const defaultTokenizerModel = "gemini-2.5-flash"
-
-func (m *Main) runCrawl(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	// Wire crawl dependencies
-	sitemapSvc := lochttp.NewSitemapService(nil)
-	fetcher, err := rod.NewFetcher()
-	if err != nil {
-		return fmt.Errorf("failed to start browser: %w", err)
-	}
-	defer fetcher.Close()
-	extractor := trafilatura.NewExtractor()
-	converter := htmltomarkdown.NewConverter()
-
-	tokenCounter, err := gemini.NewTokenCounter(defaultTokenizerModel)
-	if err != nil {
-		return fmt.Errorf("failed to create token counter: %w", err)
-	}
-
-	code := CmdCrawl(ctx, args, stdout, stderr, m.ProjectService, m.DocumentService, sitemapSvc, fetcher, extractor, converter, tokenCounter)
-	if code != 0 {
-		return fmt.Errorf("crawl command failed")
-	}
-	return nil
-}
 
 func defaultDBPath() string {
 	if path := os.Getenv("LOCDOC_DB"); path != "" {
@@ -409,68 +383,6 @@ func CmdList(ctx context.Context, stdout, stderr io.Writer, projects locdoc.Proj
 			id = id[:8]
 		}
 		fmt.Fprintf(stdout, "%s  %s  %s\n", id, p.Name, p.SourceURL)
-	}
-	return 0
-}
-
-// CmdCrawl handles the "crawl" command to crawl documentation for projects.
-func CmdCrawl(
-	ctx context.Context,
-	args []string,
-	stdout, stderr io.Writer,
-	projects locdoc.ProjectService,
-	documents locdoc.DocumentService,
-	sitemap locdoc.SitemapService,
-	fetcher locdoc.Fetcher,
-	extractor locdoc.Extractor,
-	converter locdoc.Converter,
-	tokenCounter locdoc.TokenCounter,
-) int {
-
-	// Determine which projects to crawl
-	var projectList []*locdoc.Project
-	if len(args) > 0 {
-		// Crawl specific project by name
-		name := args[0]
-		list, err := projects.FindProjects(ctx, locdoc.ProjectFilter{Name: &name})
-		if err != nil {
-			fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
-			return 1
-		}
-		if len(list) == 0 {
-			fmt.Fprintf(stderr, "error: project %q not found\n", name)
-			return 1
-		}
-		projectList = list
-	} else {
-		// Crawl all projects
-		var err error
-		projectList, err = projects.FindProjects(ctx, locdoc.ProjectFilter{})
-		if err != nil {
-			fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
-			return 1
-		}
-	}
-
-	if len(projectList) == 0 {
-		fmt.Fprintln(stderr, "No projects to crawl. Use 'locdoc add' first.")
-		return 1
-	}
-
-	// Crawl each project
-	var hasError bool
-	for _, project := range projectList {
-		fmt.Fprintf(stdout, "Crawling %s (%s)...\n", project.Name, project.SourceURL)
-
-		if err := crawlProject(ctx, project, stdout, stderr,
-			sitemap, fetcher, extractor, converter, documents, tokenCounter); err != nil {
-			fmt.Fprintf(stderr, "error crawling %s: %v\n", project.Name, err)
-			hasError = true
-		}
-	}
-
-	if hasError {
-		return 1
 	}
 	return 0
 }
@@ -761,7 +673,7 @@ func CmdDocs(
 	}
 
 	if len(docs) == 0 {
-		fmt.Fprintf(stderr, "project %q has no documents. Run \"locdoc crawl %s\" first.\n", name, name)
+		fmt.Fprintf(stderr, "project %q has no documents. To re-add, first run \"locdoc delete %s --force\", then run \"locdoc add %s <url>\".\n", name, name, name)
 		return 1
 	}
 

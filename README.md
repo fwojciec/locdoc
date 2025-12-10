@@ -24,19 +24,29 @@ go install github.com/fwojciec/locdoc/cmd/locdoc@latest
 
 ## Usage
 
-### Register a documentation project
+### Add a documentation project
 
 ```bash
 locdoc add htmx https://htmx.org/
 ```
 
-### Crawl and store the documentation
+This discovers pages via sitemap, fetches each page, extracts main content, converts to markdown, and stores in SQLite.
+
+Options:
+- `--preview` - Show discovered URLs without creating project
+- `--force` - Delete existing project first (useful for re-crawling)
+- `--filter <regex>` - Only include URLs matching pattern (can be repeated)
 
 ```bash
-locdoc crawl htmx
-```
+# Preview what will be crawled
+locdoc add htmx https://htmx.org/ --preview
 
-This discovers pages via sitemap, fetches each page, extracts main content, converts to markdown, and stores in SQLite.
+# Re-crawl an existing project
+locdoc add htmx https://htmx.org/ --force
+
+# Filter to specific sections
+locdoc add htmx https://htmx.org/ --filter "/docs/" --filter "/examples/"
+```
 
 ### List registered projects
 
