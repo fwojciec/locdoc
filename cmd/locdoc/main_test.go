@@ -637,3 +637,183 @@ func TestCmdDelete(t *testing.T) {
 		assert.Empty(t, stderr.String())
 	})
 }
+
+func TestCmdDocs(t *testing.T) {
+	t.Parallel()
+
+	t.Run("lists documents in summary mode", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				if filter.Name != nil && *filter.Name == "myproject" {
+					return []*locdoc.Project{
+						{ID: "proj-1", Name: "myproject", SourceURL: "https://example.com"},
+					}, nil
+				}
+				return nil, nil
+			},
+		}
+
+		documentSvc := &mock.DocumentService{
+			FindDocumentsFn: func(ctx context.Context, filter locdoc.DocumentFilter) ([]*locdoc.Document, error) {
+				if filter.ProjectID != nil && *filter.ProjectID == "proj-1" && filter.SortBy == "position" {
+					return []*locdoc.Document{
+						{ID: "doc-1", Title: "Getting Started", SourceURL: "https://example.com/docs/getting-started", Position: 0},
+						{ID: "doc-2", Title: "Functions", SourceURL: "https://example.com/docs/functions", Position: 1},
+					}, nil
+				}
+				return nil, nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdDocs(testContext(), []string{"myproject"}, stdout, stderr, projectSvc, documentSvc)
+
+		assert.Equal(t, 0, code)
+		assert.Contains(t, stdout.String(), "Documents for myproject (2 total)")
+		assert.Contains(t, stdout.String(), "1. Getting Started")
+		assert.Contains(t, stdout.String(), "https://example.com/docs/getting-started")
+		assert.Contains(t, stdout.String(), "2. Functions")
+		assert.Contains(t, stdout.String(), "https://example.com/docs/functions")
+		assert.Empty(t, stderr.String())
+	})
+
+	t.Run("shows full content with --full flag", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				if filter.Name != nil && *filter.Name == "myproject" {
+					return []*locdoc.Project{
+						{ID: "proj-1", Name: "myproject", SourceURL: "https://example.com"},
+					}, nil
+				}
+				return nil, nil
+			},
+		}
+
+		documentSvc := &mock.DocumentService{
+			FindDocumentsFn: func(ctx context.Context, filter locdoc.DocumentFilter) ([]*locdoc.Document, error) {
+				if filter.ProjectID != nil && *filter.ProjectID == "proj-1" && filter.SortBy == "position" {
+					return []*locdoc.Document{
+						{ID: "doc-1", Title: "Getting Started", SourceURL: "https://example.com/docs/getting-started", Content: "# Getting Started\n\nWelcome to the docs.", Position: 0},
+						{ID: "doc-2", Title: "Functions", SourceURL: "https://example.com/docs/functions", Content: "# Functions\n\nHere are the functions.", Position: 1},
+					}, nil
+				}
+				return nil, nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdDocs(testContext(), []string{"myproject", "--full"}, stdout, stderr, projectSvc, documentSvc)
+
+		assert.Equal(t, 0, code)
+		// Uses FormatDocuments output
+		assert.Contains(t, stdout.String(), "## Document: Getting Started")
+		assert.Contains(t, stdout.String(), "# Getting Started")
+		assert.Contains(t, stdout.String(), "Welcome to the docs.")
+		assert.Contains(t, stdout.String(), "## Document: Functions")
+		assert.Contains(t, stdout.String(), "# Functions")
+		assert.Contains(t, stdout.String(), "Here are the functions.")
+		assert.Empty(t, stderr.String())
+	})
+
+	t.Run("returns error when project not found", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				return []*locdoc.Project{}, nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdDocs(testContext(), []string{"nonexistent"}, stdout, stderr, projectSvc, nil)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), `project "nonexistent" not found`)
+		assert.Contains(t, stderr.String(), "locdoc list")
+		assert.Empty(t, stdout.String())
+	})
+
+	t.Run("returns error when project has no documents", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				return []*locdoc.Project{
+					{ID: "proj-1", Name: "emptyproject", SourceURL: "https://example.com"},
+				}, nil
+			},
+		}
+
+		documentSvc := &mock.DocumentService{
+			FindDocumentsFn: func(ctx context.Context, filter locdoc.DocumentFilter) ([]*locdoc.Document, error) {
+				return []*locdoc.Document{}, nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdDocs(testContext(), []string{"emptyproject"}, stdout, stderr, projectSvc, documentSvc)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), `project "emptyproject" has no documents`)
+		assert.Contains(t, stderr.String(), "locdoc crawl")
+		assert.Empty(t, stdout.String())
+	})
+
+	t.Run("returns error for missing name argument", func(t *testing.T) {
+		t.Parallel()
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdDocs(testContext(), []string{}, stdout, stderr, nil, nil)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "usage:")
+		assert.Empty(t, stdout.String())
+	})
+
+	t.Run("allows --full flag before project name", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				if filter.Name != nil && *filter.Name == "myproject" {
+					return []*locdoc.Project{
+						{ID: "proj-1", Name: "myproject", SourceURL: "https://example.com"},
+					}, nil
+				}
+				return nil, nil
+			},
+		}
+
+		documentSvc := &mock.DocumentService{
+			FindDocumentsFn: func(ctx context.Context, filter locdoc.DocumentFilter) ([]*locdoc.Document, error) {
+				return []*locdoc.Document{
+					{ID: "doc-1", Title: "Test", Content: "Test content", Position: 0},
+				}, nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		// --full before project name
+		code := main.CmdDocs(testContext(), []string{"--full", "myproject"}, stdout, stderr, projectSvc, documentSvc)
+
+		assert.Equal(t, 0, code)
+		assert.Contains(t, stdout.String(), "## Document: Test")
+		assert.Empty(t, stderr.String())
+	})
+}

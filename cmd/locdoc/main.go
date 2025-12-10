@@ -83,6 +83,8 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return m.runDelete(ctx, cmdArgs, stdout, stderr)
 	case "crawl":
 		return m.runCrawl(ctx, cmdArgs, stdout, stderr)
+	case "docs":
+		return m.runDocs(ctx, cmdArgs, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "error: unknown command %q\n", cmd)
 		return m.usage(stderr)
@@ -97,6 +99,7 @@ func (m *Main) usage(w io.Writer) error {
 	fmt.Fprintln(w, "  list                   List all registered projects")
 	fmt.Fprintln(w, "  delete <name> --force  Delete a project and its documents")
 	fmt.Fprintln(w, "  crawl [name]           Crawl documentation for all or one project")
+	fmt.Fprintln(w, "  docs <name> [--full]   List documents for a project (--full for content)")
 	return fmt.Errorf("invalid usage")
 }
 
@@ -120,6 +123,14 @@ func (m *Main) runDelete(ctx context.Context, args []string, stdout, stderr io.W
 	code := CmdDelete(ctx, args, stdout, stderr, m.ProjectService)
 	if code != 0 {
 		return fmt.Errorf("delete command failed")
+	}
+	return nil
+}
+
+func (m *Main) runDocs(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	code := CmdDocs(ctx, args, stdout, stderr, m.ProjectService, m.DocumentService)
+	if code != 0 {
+		return fmt.Errorf("docs command failed")
 	}
 	return nil
 }
@@ -382,6 +393,78 @@ func computeHash(content string) string {
 // ComputeHashForTest is exported for testing purposes only.
 func ComputeHashForTest(content string) string {
 	return computeHash(content)
+}
+
+// CmdDocs handles the "docs" command to list documents for a project.
+func CmdDocs(
+	ctx context.Context,
+	args []string,
+	stdout, stderr io.Writer,
+	projects locdoc.ProjectService,
+	documents locdoc.DocumentService,
+) int {
+	var name string
+	var full bool
+
+	// Parse arguments - allow --full in any position
+	for _, arg := range args {
+		if arg == "--full" {
+			full = true
+		} else if name == "" {
+			name = arg
+		}
+	}
+
+	if name == "" {
+		fmt.Fprintln(stderr, "usage: locdoc docs <name> [--full]")
+		return 1
+	}
+
+	// Find project by name
+	list, err := projects.FindProjects(ctx, locdoc.ProjectFilter{Name: &name})
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
+		return 1
+	}
+	if len(list) == 0 {
+		fmt.Fprintf(stderr, "project %q not found. Use \"locdoc list\" to see available projects.\n", name)
+		return 1
+	}
+
+	project := list[0]
+
+	// Find documents for project sorted by position
+	docs, err := documents.FindDocuments(ctx, locdoc.DocumentFilter{
+		ProjectID: &project.ID,
+		SortBy:    "position",
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
+		return 1
+	}
+
+	if len(docs) == 0 {
+		fmt.Fprintf(stderr, "project %q has no documents. Run \"locdoc crawl %s\" first.\n", name, name)
+		return 1
+	}
+
+	if full {
+		// Print full formatted content (same as what ask sends to LLM)
+		fmt.Fprintln(stdout, locdoc.FormatDocuments(docs))
+		return 0
+	}
+
+	// Print summary listing
+	fmt.Fprintf(stdout, "Documents for %s (%d total):\n\n", name, len(docs))
+	for i, doc := range docs {
+		title := doc.Title
+		if title == "" {
+			title = doc.SourceURL
+		}
+		fmt.Fprintf(stdout, "  %d. %s\n     %s\n", i+1, title, doc.SourceURL)
+	}
+
+	return 0
 }
 
 // CmdDelete handles the "delete" command to remove a project.
