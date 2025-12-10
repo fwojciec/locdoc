@@ -32,6 +32,9 @@ func NewSitemapService(client *http.Client) *SitemapService {
 
 // DiscoverURLs finds all URLs from a site's sitemap.
 // Returns an empty slice (not nil) if no sitemaps are found.
+//
+// When baseURL has a non-root path (e.g., https://example.com/docs/),
+// only URLs with paths starting with that prefix are returned.
 func (s *SitemapService) DiscoverURLs(ctx context.Context, baseURL string, filter *locdoc.URLFilter) ([]string, error) {
 	// Check for context cancellation early
 	if err := ctx.Err(); err != nil {
@@ -44,8 +47,18 @@ func (s *SitemapService) DiscoverURLs(ctx context.Context, baseURL string, filte
 		return nil, fmt.Errorf("invalid base URL: %w", err)
 	}
 
+	// Extract path prefix for filtering (empty or "/" means no prefix filtering)
+	pathPrefix := base.Path
+	if pathPrefix == "/" {
+		pathPrefix = ""
+	}
+
+	// For sitemap discovery, use the root of the domain (strip any path)
+	sitemapBase := *base
+	sitemapBase.Path = ""
+
 	// Find sitemap URLs from robots.txt or fallback
-	sitemapURLs, err := s.findSitemapURLs(ctx, base)
+	sitemapURLs, err := s.findSitemapURLs(ctx, &sitemapBase)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +87,18 @@ func (s *SitemapService) DiscoverURLs(ctx context.Context, baseURL string, filte
 		}
 	}
 
-	// Apply filter
+	// Apply path prefix filter if baseURL has a non-root path
+	if pathPrefix != "" {
+		var filtered []string
+		for _, u := range allURLs {
+			if matchesPathPrefix(u, pathPrefix) {
+				filtered = append(filtered, u)
+			}
+		}
+		allURLs = filtered
+	}
+
+	// Apply user-provided filter
 	if filter != nil {
 		var filtered []string
 		for _, u := range allURLs {
@@ -86,6 +110,36 @@ func (s *SitemapService) DiscoverURLs(ctx context.Context, baseURL string, filte
 	}
 
 	return allURLs, nil
+}
+
+// matchesPathPrefix checks if a URL's path starts with the given prefix,
+// respecting path boundaries. If prefix doesn't end with /, it's normalized
+// to do so for matching (e.g., /docs matches /docs/ and /docs/intro but not /documentation).
+func matchesPathPrefix(rawURL, prefix string) bool {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	path := parsed.Path
+
+	// Normalize prefix to end with / if non-empty and not ending with /
+	if prefix != "" && !strings.HasSuffix(prefix, "/") {
+		prefix = prefix + "/"
+	}
+
+	// Check if path starts with prefix
+	if !strings.HasPrefix(path, prefix) {
+		return false
+	}
+
+	// If we have a prefix that ends with / (after normalization),
+	// it's already at a path boundary, so any match is valid
+	if strings.HasSuffix(prefix, "/") {
+		return true
+	}
+
+	// This shouldn't be reached since we always normalize to end with /
+	return false
 }
 
 // findSitemapURLs discovers sitemap URLs from robots.txt or falls back to /sitemap.xml.
