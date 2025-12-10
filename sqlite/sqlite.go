@@ -29,10 +29,20 @@ func (db *DB) Open() error {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 
+	// SQLite only supports one writer at a time, so limit to one connection.
+	conn.SetMaxOpenConns(1)
+
 	// Verify connection
 	if err := conn.Ping(); err != nil {
 		conn.Close()
 		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	// Set busy timeout to wait 5 seconds before failing on lock contention.
+	// This prevents immediate "database is locked" errors.
+	if _, err := conn.Exec("PRAGMA busy_timeout = 5000"); err != nil {
+		conn.Close()
+		return fmt.Errorf("failed to set busy timeout: %w", err)
 	}
 
 	// Enable WAL mode for file-based databases for better write performance.
@@ -84,6 +94,11 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 // ExecContext executes a statement that doesn't return rows.
 func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return db.db.ExecContext(ctx, query, args...)
+}
+
+// Stats returns database statistics.
+func (db *DB) Stats() sql.DBStats {
+	return db.db.Stats()
 }
 
 // createSchema creates the database tables if they don't exist.
