@@ -3,6 +3,7 @@ package main_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -127,6 +128,39 @@ func TestCmdAdd(t *testing.T) {
 		assert.Contains(t, stdout.String(), "https://example.com/docs/page2")
 		assert.Contains(t, stdout.String(), "https://example.com/docs/page3")
 		assert.Empty(t, stderr.String())
+	})
+
+	t.Run("preview returns error when sitemap discovery fails", func(t *testing.T) {
+		t.Parallel()
+
+		sitemapSvc := &mock.SitemapService{
+			DiscoverURLsFn: func(ctx context.Context, baseURL string, filter *locdoc.URLFilter) ([]string, error) {
+				return nil, fmt.Errorf("failed to fetch sitemap")
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs", "--preview"}, stdout, stderr, nil, sitemapSvc)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "error:")
+		assert.Contains(t, stderr.String(), "failed to fetch sitemap")
+		assert.Empty(t, stdout.String())
+	})
+
+	t.Run("preview returns error when sitemap service is nil", func(t *testing.T) {
+		t.Parallel()
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs", "--preview"}, stdout, stderr, nil, nil)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "error:")
+		assert.Empty(t, stdout.String())
 	})
 }
 

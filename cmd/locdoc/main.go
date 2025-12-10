@@ -240,6 +240,10 @@ func CmdAdd(ctx context.Context, args []string, stdout, stderr io.Writer, projec
 
 	// Preview mode: show URLs without creating project
 	if preview {
+		if sitemaps == nil {
+			fmt.Fprintln(stderr, "error: preview mode requires sitemap service")
+			return 1
+		}
 		urls, err := sitemaps.DiscoverURLs(ctx, url, nil)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %s\n", err)
