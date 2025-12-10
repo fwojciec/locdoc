@@ -56,4 +56,34 @@ func TestDB_Open(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "wal", journalMode)
 	})
+
+	t.Run("sets busy timeout to prevent immediate lock failures", func(t *testing.T) {
+		t.Parallel()
+
+		db := sqlite.NewDB(":memory:")
+		err := db.Open()
+		require.NoError(t, err)
+		defer db.Close()
+
+		ctx := context.Background()
+		var busyTimeout int
+		err = db.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&busyTimeout)
+		require.NoError(t, err)
+		require.Equal(t, 5000, busyTimeout)
+	})
+
+	t.Run("limits max open connections to one", func(t *testing.T) {
+		t.Parallel()
+
+		db := sqlite.NewDB(":memory:")
+		err := db.Open()
+		require.NoError(t, err)
+		defer db.Close()
+
+		// Verify max open connections is 1
+		// We can't directly query this from SQLite, but we can verify
+		// it's set by checking the DB stats after some operations
+		stats := db.Stats()
+		require.Equal(t, 1, stats.MaxOpenConnections)
+	})
 }
