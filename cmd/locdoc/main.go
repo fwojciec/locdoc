@@ -673,7 +673,7 @@ func CmdDocs(
 	}
 
 	if len(docs) == 0 {
-		fmt.Fprintf(stderr, "project %q has no documents. Delete and re-add with \"locdoc delete %s --force && locdoc add %s <url>\".\n", name, name, name)
+		fmt.Fprintf(stderr, "project %q has no documents. To re-add, first run \"locdoc delete %s --force\", then run \"locdoc add %s <url>\".\n", name, name, name)
 		return 1
 	}
 
