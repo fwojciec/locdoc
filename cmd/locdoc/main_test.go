@@ -495,6 +495,49 @@ func TestCmdAdd(t *testing.T) {
 		assert.Contains(t, stdout.String(), "Added project")
 		assert.Empty(t, stderr.String())
 	})
+
+	t.Run("with --force returns error when find projects fails", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				return nil, locdoc.Errorf(locdoc.EINTERNAL, "database error")
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs", "--force"}, stdout, stderr, projectSvc, nil, nil)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "error:")
+		assert.Empty(t, stdout.String())
+	})
+
+	t.Run("with --force returns error when delete fails", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				return []*locdoc.Project{
+					{ID: "existing-id", Name: "myproject", SourceURL: "https://old.com"},
+				}, nil
+			},
+			DeleteProjectFn: func(ctx context.Context, id string) error {
+				return locdoc.Errorf(locdoc.EINTERNAL, "database error")
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs", "--force"}, stdout, stderr, projectSvc, nil, nil)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "error:")
+		assert.Empty(t, stdout.String())
+	})
 }
 
 func TestParseAddArgs(t *testing.T) {
