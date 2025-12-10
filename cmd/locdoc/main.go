@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/fwojciec/locdoc"
@@ -108,6 +110,8 @@ func (m *Main) printUsage(w io.Writer) {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Commands:")
 	fmt.Fprintln(w, "  add <name> <url>       Register a documentation project")
+	fmt.Fprintln(w, "      --filter <regex>   Filter URLs by regex (can be repeated)")
+	fmt.Fprintln(w, "      --preview          Show URLs without creating project")
 	fmt.Fprintln(w, "  list                   List all registered projects")
 	fmt.Fprintln(w, "  delete <name> --force  Delete a project and its documents")
 	fmt.Fprintln(w, "  crawl [name]           Crawl documentation for all or one project")
@@ -218,33 +222,73 @@ func defaultDBPath() string {
 	return filepath.Join(dir, "locdoc.db")
 }
 
-// CmdAdd handles the "add" command to register a new project.
-func CmdAdd(ctx context.Context, args []string, stdout, stderr io.Writer, projects locdoc.ProjectService, sitemaps locdoc.SitemapService) int {
-	// Parse flags
-	var preview bool
-	var positional []string
-	for _, arg := range args {
-		if arg == "--preview" {
-			preview = true
-		} else {
-			positional = append(positional, arg)
+// AddOptions holds parsed arguments for the add command.
+type AddOptions struct {
+	Name    string
+	URL     string
+	Preview bool
+	Filters []string
+}
+
+// ParseAddArgs parses command-line arguments for the add command.
+func ParseAddArgs(args []string) (*AddOptions, error) {
+	opts := &AddOptions{}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "--preview":
+			opts.Preview = true
+		case "--filter":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("--filter requires a pattern argument")
+			}
+			i++
+			opts.Filters = append(opts.Filters, args[i])
+		default:
+			if opts.Name == "" {
+				opts.Name = arg
+			} else if opts.URL == "" {
+				opts.URL = arg
+			}
 		}
 	}
 
-	if len(positional) != 2 {
-		fmt.Fprintln(stderr, "usage: locdoc add <name> <url> [--preview]")
+	if opts.Name == "" || opts.URL == "" {
+		return nil, fmt.Errorf("usage: locdoc add <name> <url> [--preview] [--filter <pattern>...]")
+	}
+
+	return opts, nil
+}
+
+// CmdAdd handles the "add" command to register a new project.
+func CmdAdd(ctx context.Context, args []string, stdout, stderr io.Writer, projects locdoc.ProjectService, sitemaps locdoc.SitemapService) int {
+	opts, err := ParseAddArgs(args)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
 		return 1
 	}
 
-	name, url := positional[0], positional[1]
+	// Compile filters to URLFilter (validates regex patterns early)
+	var urlFilter *locdoc.URLFilter
+	if len(opts.Filters) > 0 {
+		urlFilter = &locdoc.URLFilter{}
+		for _, pattern := range opts.Filters {
+			re, err := regexp.Compile(pattern)
+			if err != nil {
+				fmt.Fprintf(stderr, "error: invalid filter pattern %q: %v\n", pattern, err)
+				return 1
+			}
+			urlFilter.Include = append(urlFilter.Include, re)
+		}
+	}
 
 	// Preview mode: show URLs without creating project
-	if preview {
+	if opts.Preview {
 		if sitemaps == nil {
 			fmt.Fprintln(stderr, "error: preview mode requires sitemap service")
 			return 1
 		}
-		urls, err := sitemaps.DiscoverURLs(ctx, url, nil)
+		urls, err := sitemaps.DiscoverURLs(ctx, opts.URL, urlFilter)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %s\n", err)
 			return 1
@@ -256,8 +300,9 @@ func CmdAdd(ctx context.Context, args []string, stdout, stderr io.Writer, projec
 	}
 
 	project := &locdoc.Project{
-		Name:      name,
-		SourceURL: url,
+		Name:      opts.Name,
+		SourceURL: opts.URL,
+		Filter:    strings.Join(opts.Filters, "\n"),
 	}
 
 	if err := projects.CreateProject(ctx, project); err != nil {
@@ -265,7 +310,7 @@ func CmdAdd(ctx context.Context, args []string, stdout, stderr io.Writer, projec
 		return 1
 	}
 
-	fmt.Fprintf(stdout, "Added project %q (%s)\n", name, project.ID)
+	fmt.Fprintf(stdout, "Added project %q (%s)\n", opts.Name, project.ID)
 	return 0
 }
 
