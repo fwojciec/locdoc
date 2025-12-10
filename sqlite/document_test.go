@@ -61,6 +61,28 @@ func TestDocumentService_CreateDocument(t *testing.T) {
 		require.Error(t, err)
 		assert.Equal(t, locdoc.EINVALID, locdoc.ErrorCode(err))
 	})
+
+	t.Run("stores position field", func(t *testing.T) {
+		t.Parallel()
+
+		db := setupTestDB(t)
+		project := createTestProject(t, db)
+		svc := sqlite.NewDocumentService(db)
+		ctx := context.Background()
+
+		doc := &locdoc.Document{
+			ProjectID: project.ID,
+			SourceURL: "https://example.com/docs/page1",
+			Position:  42,
+		}
+
+		err := svc.CreateDocument(ctx, doc)
+		require.NoError(t, err)
+
+		found, err := svc.FindDocumentByID(ctx, doc.ID)
+		require.NoError(t, err)
+		assert.Equal(t, 42, found.Position)
+	})
 }
 
 func TestDocumentService_FindDocumentByID(t *testing.T) {
@@ -201,6 +223,56 @@ func TestDocumentService_FindDocuments(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, docs, 2)
 	})
+
+	t.Run("includes position in results", func(t *testing.T) {
+		t.Parallel()
+
+		db := setupTestDB(t)
+		project := createTestProject(t, db)
+		svc := sqlite.NewDocumentService(db)
+		ctx := context.Background()
+
+		doc := &locdoc.Document{
+			ProjectID: project.ID,
+			SourceURL: "https://example.com/docs/page1",
+			Position:  99,
+		}
+		require.NoError(t, svc.CreateDocument(ctx, doc))
+
+		docs, err := svc.FindDocuments(ctx, locdoc.DocumentFilter{ProjectID: &project.ID})
+		require.NoError(t, err)
+		require.Len(t, docs, 1)
+		assert.Equal(t, 99, docs[0].Position)
+	})
+
+	t.Run("sorts by position when SortBy is position", func(t *testing.T) {
+		t.Parallel()
+
+		db := setupTestDB(t)
+		project := createTestProject(t, db)
+		svc := sqlite.NewDocumentService(db)
+		ctx := context.Background()
+
+		// Create documents with positions out of order
+		for i, pos := range []int{3, 1, 2} {
+			doc := &locdoc.Document{
+				ProjectID: project.ID,
+				SourceURL: fmt.Sprintf("https://example.com/docs/page%d", i+1),
+				Position:  pos,
+			}
+			require.NoError(t, svc.CreateDocument(ctx, doc))
+		}
+
+		docs, err := svc.FindDocuments(ctx, locdoc.DocumentFilter{
+			ProjectID: &project.ID,
+			SortBy:    "position",
+		})
+		require.NoError(t, err)
+		require.Len(t, docs, 3)
+		assert.Equal(t, 1, docs[0].Position)
+		assert.Equal(t, 2, docs[1].Position)
+		assert.Equal(t, 3, docs[2].Position)
+	})
 }
 
 func TestDocumentService_UpdateDocument(t *testing.T) {
@@ -248,6 +320,34 @@ func TestDocumentService_UpdateDocument(t *testing.T) {
 		_, err := svc.UpdateDocument(ctx, "nonexistent-id", locdoc.DocumentUpdate{Title: &title})
 		require.Error(t, err)
 		assert.Equal(t, locdoc.ENOTFOUND, locdoc.ErrorCode(err))
+	})
+
+	t.Run("updates position field", func(t *testing.T) {
+		t.Parallel()
+
+		db := setupTestDB(t)
+		project := createTestProject(t, db)
+		svc := sqlite.NewDocumentService(db)
+		ctx := context.Background()
+
+		doc := &locdoc.Document{
+			ProjectID: project.ID,
+			SourceURL: "https://example.com/docs/page1",
+			Position:  5,
+		}
+		require.NoError(t, svc.CreateDocument(ctx, doc))
+
+		newPosition := 10
+		updated, err := svc.UpdateDocument(ctx, doc.ID, locdoc.DocumentUpdate{
+			Position: &newPosition,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, 10, updated.Position)
+
+		// Verify persisted
+		found, err := svc.FindDocumentByID(ctx, doc.ID)
+		require.NoError(t, err)
+		assert.Equal(t, 10, found.Position)
 	})
 }
 

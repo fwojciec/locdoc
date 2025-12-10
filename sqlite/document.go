@@ -52,10 +52,10 @@ func (s *DocumentService) CreateDocument(ctx context.Context, doc *locdoc.Docume
 	doc.ContentHash = hashContent(doc.Content)
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO documents (id, project_id, file_path, source_url, title, content, content_hash, fetched_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO documents (id, project_id, file_path, source_url, title, content, content_hash, position, fetched_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, doc.ID, doc.ProjectID, doc.FilePath, doc.SourceURL, doc.Title, doc.Content, doc.ContentHash,
-		doc.FetchedAt.Format(time.RFC3339))
+		doc.Position, doc.FetchedAt.Format(time.RFC3339))
 
 	return err
 }
@@ -66,11 +66,11 @@ func (s *DocumentService) FindDocumentByID(ctx context.Context, id string) (*loc
 	var fetchedAt string
 
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, project_id, file_path, source_url, title, content, content_hash, fetched_at
+		SELECT id, project_id, file_path, source_url, title, content, content_hash, position, fetched_at
 		FROM documents
 		WHERE id = ?
 	`, id).Scan(&doc.ID, &doc.ProjectID, &doc.FilePath, &doc.SourceURL, &doc.Title,
-		&doc.Content, &doc.ContentHash, &fetchedAt)
+		&doc.Content, &doc.ContentHash, &doc.Position, &fetchedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, locdoc.Errorf(locdoc.ENOTFOUND, "document not found")
@@ -93,7 +93,7 @@ func (s *DocumentService) FindDocuments(ctx context.Context, filter locdoc.Docum
 	var query strings.Builder
 	var args []any
 
-	query.WriteString("SELECT id, project_id, file_path, source_url, title, content, content_hash, fetched_at FROM documents WHERE 1=1")
+	query.WriteString("SELECT id, project_id, file_path, source_url, title, content, content_hash, position, fetched_at FROM documents WHERE 1=1")
 
 	if filter.ID != nil {
 		query.WriteString(" AND id = ?")
@@ -108,7 +108,12 @@ func (s *DocumentService) FindDocuments(ctx context.Context, filter locdoc.Docum
 		args = append(args, *filter.SourceURL)
 	}
 
-	query.WriteString(" ORDER BY fetched_at DESC")
+	switch filter.SortBy {
+	case "position":
+		query.WriteString(" ORDER BY position ASC")
+	default:
+		query.WriteString(" ORDER BY fetched_at DESC")
+	}
 
 	if filter.Limit > 0 {
 		query.WriteString(" LIMIT ?")
@@ -131,7 +136,7 @@ func (s *DocumentService) FindDocuments(ctx context.Context, filter locdoc.Docum
 		var fetchedAt string
 
 		if err := rows.Scan(&doc.ID, &doc.ProjectID, &doc.FilePath, &doc.SourceURL, &doc.Title,
-			&doc.Content, &doc.ContentHash, &fetchedAt); err != nil {
+			&doc.Content, &doc.ContentHash, &doc.Position, &fetchedAt); err != nil {
 			return nil, err
 		}
 
@@ -166,6 +171,9 @@ func (s *DocumentService) UpdateDocument(ctx context.Context, id string, upd loc
 		// Only allow explicit hash override if content wasn't updated
 		doc.ContentHash = *upd.ContentHash
 	}
+	if upd.Position != nil {
+		doc.Position = *upd.Position
+	}
 
 	// Validate before persisting (defense-in-depth)
 	if err := doc.Validate(); err != nil {
@@ -174,9 +182,9 @@ func (s *DocumentService) UpdateDocument(ctx context.Context, id string, upd loc
 
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE documents
-		SET title = ?, content = ?, content_hash = ?
+		SET title = ?, content = ?, content_hash = ?, position = ?
 		WHERE id = ?
-	`, doc.Title, doc.Content, doc.ContentHash, id)
+	`, doc.Title, doc.Content, doc.ContentHash, doc.Position, id)
 
 	if err != nil {
 		return nil, err
