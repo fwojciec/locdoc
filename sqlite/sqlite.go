@@ -95,6 +95,7 @@ func (db *DB) createSchema() error {
 			title TEXT NOT NULL DEFAULT '',
 			content TEXT NOT NULL DEFAULT '',
 			content_hash TEXT NOT NULL DEFAULT '',
+			position INTEGER NOT NULL DEFAULT 0,
 			fetched_at TEXT NOT NULL
 		);
 
