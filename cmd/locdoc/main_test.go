@@ -317,8 +317,7 @@ func TestCmdCrawl(t *testing.T) {
 			},
 		}
 
-		// xxhash of "ef46db3751d8e999" is "ef46db3751d8e999" (we'll use this as content)
-		// Actually, we track the hash dynamically by capturing what content is converted
+		// Test verifies position updates when content hash matches but position differs
 		contentToReturn := "same content"
 		var capturedHash string
 		var updatedPosition *int
