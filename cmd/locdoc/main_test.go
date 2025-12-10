@@ -225,6 +225,7 @@ func TestCmdCrawl(t *testing.T) {
 			stdout, stderr,
 			projectSvc, documentSvc,
 			sitemapSvc, fetcher, extractor, converter,
+			nil, // tokenCounter
 		)
 
 		assert.Equal(t, 0, code)
@@ -299,6 +300,7 @@ func TestCmdCrawl(t *testing.T) {
 			stdout, stderr,
 			projectSvc, documentSvc,
 			sitemapSvc, fetcher, extractor, converter,
+			nil, // tokenCounter
 		)
 
 		assert.Equal(t, 0, code)
@@ -378,10 +380,11 @@ func TestCmdCrawl(t *testing.T) {
 			stdout, stderr,
 			projectSvc, documentSvc,
 			sitemapSvc, fetcher, extractor, converter,
+			nil, // tokenCounter
 		)
 
 		assert.Equal(t, 0, code)
-		assert.Contains(t, stdout.String(), "position updated")
+		assert.Contains(t, stdout.String(), "Saved")
 		require.NotNil(t, updatedPosition)
 		assert.Equal(t, 0, *updatedPosition) // Position should be 0 (first in list)
 	})
@@ -403,6 +406,7 @@ func TestCmdCrawl(t *testing.T) {
 			[]string{"nonexistent"},
 			stdout, stderr,
 			projectSvc, nil, nil, nil, nil, nil,
+			nil, // tokenCounter
 		)
 
 		assert.Equal(t, 1, code)
@@ -467,6 +471,7 @@ func TestCmdCrawl(t *testing.T) {
 			stdout, stderr,
 			projectSvc, documentSvc,
 			sitemapSvc, fetcher, extractor, converter,
+			nil, // tokenCounter
 		)
 
 		assert.Equal(t, 0, code)
@@ -491,10 +496,101 @@ func TestCmdCrawl(t *testing.T) {
 			[]string{},
 			stdout, stderr,
 			projectSvc, nil, nil, nil, nil, nil,
+			nil, // tokenCounter
 		)
 
 		assert.Equal(t, 1, code)
 		assert.Contains(t, stderr.String(), "No projects")
+	})
+}
+
+func TestCmdCrawl_SummaryOutput(t *testing.T) {
+	t.Parallel()
+
+	t.Run("shows summary instead of per-URL output", func(t *testing.T) {
+		t.Parallel()
+
+		projectName := "myproject"
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				if filter.Name != nil && *filter.Name == projectName {
+					return []*locdoc.Project{
+						{ID: "proj-1", Name: projectName, SourceURL: "https://example.com"},
+					}, nil
+				}
+				return nil, nil
+			},
+		}
+
+		documentSvc := &mock.DocumentService{
+			FindDocumentsFn: func(ctx context.Context, filter locdoc.DocumentFilter) ([]*locdoc.Document, error) {
+				return nil, nil // No existing docs
+			},
+			CreateDocumentFn: func(ctx context.Context, doc *locdoc.Document) error {
+				doc.ID = "doc-" + doc.SourceURL
+				return nil
+			},
+		}
+
+		sitemapSvc := &mock.SitemapService{
+			DiscoverURLsFn: func(ctx context.Context, baseURL string, filter *locdoc.URLFilter) ([]string, error) {
+				return []string{"https://example.com/page1", "https://example.com/page2"}, nil
+			},
+		}
+
+		fetcher := &mock.Fetcher{
+			FetchFn: func(ctx context.Context, url string) (string, error) {
+				return "<html><body><h1>Test</h1><p>Content</p></body></html>", nil
+			},
+			CloseFn: func() error { return nil },
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test Page", ContentHTML: "<p>Content</p>"}, nil
+			},
+		}
+
+		// Each page converts to ~20 bytes of markdown
+		converter := &mock.Converter{
+			ConvertFn: func(html string) (string, error) {
+				return "# Content\n\nSome text", nil
+			},
+		}
+
+		// Mock token counter: return 100 tokens per call
+		tokenCounter := &mock.TokenCounter{
+			CountTokensFn: func(ctx context.Context, text string) (int, error) {
+				return 100, nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdCrawl(
+			testContext(),
+			[]string{projectName},
+			stdout, stderr,
+			projectSvc, documentSvc,
+			sitemapSvc, fetcher, extractor, converter,
+			tokenCounter,
+		)
+
+		assert.Equal(t, 0, code)
+		output := stdout.String()
+
+		// Should show summary with page count, size, and tokens
+		assert.Contains(t, output, "Saved 2 pages")
+		assert.Contains(t, output, "~0k tokens") // 200 tokens = ~0k
+		assert.Contains(t, output, "B")          // Should show bytes
+
+		// Should NOT show per-URL output
+		assert.NotContains(t, output, "[1/2]")
+		assert.NotContains(t, output, "[2/2]")
+		assert.NotContains(t, output, "saved")
+		assert.NotContains(t, output, "unchanged")
+		assert.Empty(t, stderr.String())
 	})
 }
 
@@ -590,6 +686,7 @@ func TestCmdCrawl_ConcurrentFetching(t *testing.T) {
 			stdout, stderr,
 			projectSvc, documentSvc,
 			sitemapSvc, fetcher, extractor, converter,
+			nil, // tokenCounter
 		)
 		elapsed := time.Since(start)
 
