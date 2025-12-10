@@ -179,6 +179,8 @@ func (m *Main) runAsk(ctx context.Context, args []string, stdout, stderr io.Writ
 	return nil
 }
 
+const defaultTokenizerModel = "gemini-2.5-flash"
+
 func (m *Main) runCrawl(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	// Wire crawl dependencies
 	sitemapSvc := lochttp.NewSitemapService(nil)
@@ -190,7 +192,12 @@ func (m *Main) runCrawl(ctx context.Context, args []string, stdout, stderr io.Wr
 	extractor := trafilatura.NewExtractor()
 	converter := htmltomarkdown.NewConverter()
 
-	code := CmdCrawl(ctx, args, stdout, stderr, m.ProjectService, m.DocumentService, sitemapSvc, fetcher, extractor, converter)
+	tokenCounter, err := gemini.NewTokenCounter(defaultTokenizerModel)
+	if err != nil {
+		return fmt.Errorf("failed to create token counter: %w", err)
+	}
+
+	code := CmdCrawl(ctx, args, stdout, stderr, m.ProjectService, m.DocumentService, sitemapSvc, fetcher, extractor, converter, tokenCounter)
 	if code != 0 {
 		return fmt.Errorf("crawl command failed")
 	}
@@ -267,6 +274,7 @@ func CmdCrawl(
 	fetcher locdoc.Fetcher,
 	extractor locdoc.Extractor,
 	converter locdoc.Converter,
+	tokenCounter locdoc.TokenCounter,
 ) int {
 
 	// Determine which projects to crawl
@@ -305,7 +313,7 @@ func CmdCrawl(
 		fmt.Fprintf(stdout, "Crawling %s (%s)...\n", project.Name, project.SourceURL)
 
 		if err := crawlProject(ctx, project, stdout, stderr,
-			sitemap, fetcher, extractor, converter, documents); err != nil {
+			sitemap, fetcher, extractor, converter, documents, tokenCounter); err != nil {
 			fmt.Fprintf(stderr, "error crawling %s: %v\n", project.Name, err)
 			hasError = true
 		}
@@ -337,6 +345,7 @@ func crawlProject(
 	extractor locdoc.Extractor,
 	converter locdoc.Converter,
 	documents locdoc.DocumentService,
+	tokenCounter locdoc.TokenCounter,
 ) error {
 	// Discover URLs from sitemap
 	urls, err := sitemap.DiscoverURLs(ctx, project.SourceURL, nil)
@@ -364,12 +373,15 @@ func crawlProject(
 	// Wait for all fetches to complete
 	_ = g.Wait()
 
-	// Process results in order (preserving position)
-	for i, result := range results {
-		fmt.Fprintf(stdout, "  [%d/%d] %s\n", i+1, len(urls), result.url)
+	// Accumulate stats for summary
+	var savedCount int
+	var totalBytes int
+	var totalTokens int
 
+	// Process results in order (preserving position)
+	for _, result := range results {
 		if result.err != nil {
-			fmt.Fprintf(stderr, "    skip (%s failed): %v\n", result.errStage, result.err)
+			fmt.Fprintf(stderr, "  skip %s (%s failed): %v\n", result.url, result.errStage, result.err)
 			continue
 		}
 
@@ -382,12 +394,17 @@ func crawlProject(
 				if _, err := documents.UpdateDocument(ctx, existing.ID, locdoc.DocumentUpdate{
 					Position: &position,
 				}); err != nil {
-					fmt.Fprintf(stderr, "    error updating position: %v\n", err)
+					fmt.Fprintf(stderr, "  error updating position for %s: %v\n", result.url, err)
 					continue
 				}
-				fmt.Fprintln(stdout, "    position updated")
-			} else {
-				fmt.Fprintln(stdout, "    unchanged")
+			}
+			// Count unchanged docs in stats too
+			savedCount++
+			totalBytes += len(result.markdown)
+			if tokenCounter != nil {
+				if tokens, err := tokenCounter.CountTokens(ctx, result.markdown); err == nil {
+					totalTokens += tokens
+				}
 			}
 			continue
 		}
@@ -411,21 +428,56 @@ func crawlProject(
 				ContentHash: &doc.ContentHash,
 				Position:    &position,
 			}); err != nil {
-				fmt.Fprintf(stderr, "    error updating: %v\n", err)
+				fmt.Fprintf(stderr, "  error updating %s: %v\n", result.url, err)
 				continue
 			}
-			fmt.Fprintln(stdout, "    updated")
 		} else {
 			// Create new
 			if err := documents.CreateDocument(ctx, doc); err != nil {
-				fmt.Fprintf(stderr, "    error creating: %v\n", err)
+				fmt.Fprintf(stderr, "  error creating %s: %v\n", result.url, err)
 				continue
 			}
-			fmt.Fprintln(stdout, "    saved")
+		}
+
+		// Accumulate stats
+		savedCount++
+		totalBytes += len(result.markdown)
+		if tokenCounter != nil {
+			if tokens, err := tokenCounter.CountTokens(ctx, result.markdown); err == nil {
+				totalTokens += tokens
+			}
 		}
 	}
 
+	// Print summary
+	fmt.Fprintf(stdout, "  Saved %d pages (%s, %s)\n",
+		savedCount, formatBytes(totalBytes), formatTokens(totalTokens))
+
 	return nil
+}
+
+// formatBytes formats bytes in human-readable form.
+func formatBytes(bytes int) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+	)
+	switch {
+	case bytes >= MB:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(MB))
+	case bytes >= KB:
+		return fmt.Sprintf("%.1f KB", float64(bytes)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
+}
+
+// formatTokens formats token count in human-readable form.
+func formatTokens(tokens int) string {
+	if tokens < 1000 {
+		return fmt.Sprintf("~%d tokens", tokens)
+	}
+	return fmt.Sprintf("~%dk tokens", (tokens+500)/1000)
 }
 
 // processURL fetches and processes a single URL, returning the result.
