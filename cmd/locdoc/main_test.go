@@ -784,6 +784,52 @@ func TestCmdDocs(t *testing.T) {
 		assert.Empty(t, stdout.String())
 	})
 
+	t.Run("returns error when find projects fails", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				return nil, locdoc.Errorf(locdoc.EINTERNAL, "database error")
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdDocs(testContext(), []string{"myproject"}, stdout, stderr, projectSvc, nil)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "error:")
+		assert.Empty(t, stdout.String())
+	})
+
+	t.Run("returns error when find documents fails", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				return []*locdoc.Project{
+					{ID: "proj-1", Name: "myproject", SourceURL: "https://example.com"},
+				}, nil
+			},
+		}
+
+		documentSvc := &mock.DocumentService{
+			FindDocumentsFn: func(ctx context.Context, filter locdoc.DocumentFilter) ([]*locdoc.Document, error) {
+				return nil, locdoc.Errorf(locdoc.EINTERNAL, "database error")
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdDocs(testContext(), []string{"myproject"}, stdout, stderr, projectSvc, documentSvc)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "error:")
+		assert.Empty(t, stdout.String())
+	})
+
 	t.Run("allows --full flag before project name", func(t *testing.T) {
 		t.Parallel()
 
