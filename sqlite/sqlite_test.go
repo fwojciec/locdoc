@@ -40,4 +40,20 @@ func TestDB_Open(t *testing.T) {
 		err := db.Open()
 		require.Error(t, err)
 	})
+
+	t.Run("enables WAL mode for file-based databases", func(t *testing.T) {
+		t.Parallel()
+
+		dbPath := t.TempDir() + "/test.db"
+		db := sqlite.NewDB(dbPath)
+		err := db.Open()
+		require.NoError(t, err)
+		defer db.Close()
+
+		ctx := context.Background()
+		var journalMode string
+		err = db.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&journalMode)
+		require.NoError(t, err)
+		require.Equal(t, "wal", journalMode)
+	})
 }
