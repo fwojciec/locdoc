@@ -582,8 +582,8 @@ func TestCmdCrawl_SummaryOutput(t *testing.T) {
 
 		// Should show summary with page count, size, and tokens
 		assert.Contains(t, output, "Saved 2 pages")
-		assert.Contains(t, output, "~0k tokens") // 200 tokens = ~0k
-		assert.Contains(t, output, "B")          // Should show bytes
+		assert.Contains(t, output, "~200 tokens") // 200 tokens shown as actual count
+		assert.Contains(t, output, "B")           // Should show bytes
 
 		// Should NOT show per-URL output
 		assert.NotContains(t, output, "[1/2]")

@@ -179,7 +179,7 @@ func (m *Main) runAsk(ctx context.Context, args []string, stdout, stderr io.Writ
 	return nil
 }
 
-const defaultTokenizerModel = "gemini-2.0-flash"
+const defaultTokenizerModel = "gemini-2.5-flash"
 
 func (m *Main) runCrawl(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	// Wire crawl dependencies
@@ -450,8 +450,8 @@ func crawlProject(
 	}
 
 	// Print summary
-	fmt.Fprintf(stdout, "  Saved %d pages (%s, ~%dk tokens)\n",
-		savedCount, formatBytes(totalBytes), totalTokens/1000)
+	fmt.Fprintf(stdout, "  Saved %d pages (%s, %s)\n",
+		savedCount, formatBytes(totalBytes), formatTokens(totalTokens))
 
 	return nil
 }
@@ -470,6 +470,14 @@ func formatBytes(bytes int) string {
 	default:
 		return fmt.Sprintf("%d B", bytes)
 	}
+}
+
+// formatTokens formats token count in human-readable form.
+func formatTokens(tokens int) string {
+	if tokens < 1000 {
+		return fmt.Sprintf("~%d tokens", tokens)
+	}
+	return fmt.Sprintf("~%dk tokens", (tokens+500)/1000)
 }
 
 // processURL fetches and processes a single URL, returning the result.

@@ -14,7 +14,7 @@ func TestTokenCounter_CountTokens(t *testing.T) {
 	t.Parallel()
 
 	// Use a real model name that the tokenizer supports
-	tc, err := gemini.NewTokenCounter("gemini-2.0-flash")
+	tc, err := gemini.NewTokenCounter("gemini-2.5-flash")
 	require.NoError(t, err)
 
 	// Verify it implements the interface
