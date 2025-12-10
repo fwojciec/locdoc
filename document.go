@@ -14,6 +14,7 @@ type Document struct {
 	Title       string    `json:"title"`
 	Content     string    `json:"content"`
 	ContentHash string    `json:"contentHash"`
+	Position    int       `json:"position"`
 	FetchedAt   time.Time `json:"fetchedAt"`
 }
 
@@ -60,6 +61,8 @@ type DocumentFilter struct {
 
 	Offset int `json:"offset"`
 	Limit  int `json:"limit"`
+
+	SortBy string `json:"sortBy"` // "position" or "fetched_at"
 }
 
 // DocumentUpdate represents fields that can be updated on a document.
@@ -67,4 +70,5 @@ type DocumentUpdate struct {
 	Title       *string `json:"title"`
 	Content     *string `json:"content"`
 	ContentHash *string `json:"contentHash"`
+	Position    *int    `json:"position"`
 }
