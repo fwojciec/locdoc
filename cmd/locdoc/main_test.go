@@ -3,6 +3,8 @@ package main_test
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/fwojciec/locdoc"
@@ -971,4 +973,78 @@ func TestCmdAsk(t *testing.T) {
 		assert.Contains(t, stderr.String(), "error:")
 		assert.Empty(t, stdout.String())
 	})
+}
+
+func TestRun_HelpFlag(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"--help flag", []string{"--help"}},
+		{"-h flag", []string{"-h"}},
+		{"help command", []string{"help"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			m := main.NewMain()
+			m.DBPath = filepath.Join(t.TempDir(), "test.db")
+
+			stdout := &bytes.Buffer{}
+			stderr := &bytes.Buffer{}
+
+			err := m.Run(testContext(), tt.args, stdout, stderr)
+
+			require.NoError(t, err)
+			// Usage should be printed to stdout (not stderr) when explicitly requested
+			assert.Contains(t, stdout.String(), "usage: locdoc")
+			assert.Contains(t, stdout.String(), "Commands:")
+			assert.Empty(t, stderr.String())
+		})
+	}
+}
+
+func TestRun_NoArgs(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+
+	m := main.NewMain()
+	m.DBPath = filepath.Join(tmpDir, "test.db")
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	err := m.Run(testContext(), []string{}, stdout, stderr)
+
+	// No args should show usage to stderr and return error
+	require.Error(t, err)
+	assert.Contains(t, stderr.String(), "usage: locdoc")
+}
+
+func TestRun_HelpWithoutCreatingDB(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "should-not-exist.db")
+
+	m := main.NewMain()
+	m.DBPath = dbPath
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	err := m.Run(testContext(), []string{"--help"}, stdout, stderr)
+
+	require.NoError(t, err)
+	assert.Contains(t, stdout.String(), "usage: locdoc")
+	assert.Empty(t, stderr.String())
+
+	// Verify database file was NOT created
+	_, statErr := os.Stat(dbPath)
+	assert.True(t, os.IsNotExist(statErr), "database file should not be created for --help")
 }

@@ -63,6 +63,13 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return m.usage(stderr)
 	}
 
+	// Handle help flags before opening database
+	cmd := args[0]
+	if cmd == "help" || cmd == "--help" || cmd == "-h" {
+		m.printUsage(stdout)
+		return nil
+	}
+
 	// Open database
 	m.DB = sqlite.NewDB(m.DBPath)
 	if err := m.DB.Open(); err != nil {
@@ -75,7 +82,7 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 	m.DocumentService = sqlite.NewDocumentService(m.DB)
 
 	// Dispatch command
-	cmd, cmdArgs := args[0], args[1:]
+	cmdArgs := args[1:]
 	switch cmd {
 	case "add":
 		return m.runAdd(ctx, cmdArgs, stdout, stderr)
@@ -95,7 +102,7 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 	}
 }
 
-func (m *Main) usage(w io.Writer) error {
+func (m *Main) printUsage(w io.Writer) {
 	fmt.Fprintln(w, "usage: locdoc <command> [args]")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Commands:")
@@ -105,6 +112,10 @@ func (m *Main) usage(w io.Writer) error {
 	fmt.Fprintln(w, "  crawl [name]           Crawl documentation for all or one project")
 	fmt.Fprintln(w, "  docs <name> [--full]   List documents for a project (--full for content)")
 	fmt.Fprintln(w, "  ask <name> \"<question>\" Ask a question about project documentation")
+}
+
+func (m *Main) usage(w io.Writer) error {
+	m.printUsage(w)
 	return fmt.Errorf("invalid usage")
 }
 
