@@ -162,6 +162,215 @@ func TestCmdAdd(t *testing.T) {
 		assert.Contains(t, stderr.String(), "error:")
 		assert.Empty(t, stdout.String())
 	})
+
+	t.Run("preview with filter passes filter to sitemap service", func(t *testing.T) {
+		t.Parallel()
+
+		var receivedFilter *locdoc.URLFilter
+		sitemapSvc := &mock.SitemapService{
+			DiscoverURLsFn: func(ctx context.Context, baseURL string, filter *locdoc.URLFilter) ([]string, error) {
+				receivedFilter = filter
+				return []string{
+					"https://example.com/docs/api/one",
+					"https://example.com/docs/api/two",
+				}, nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{
+			"myproject", "https://example.com/docs",
+			"--preview",
+			"--filter", "/api/",
+		}, stdout, stderr, nil, sitemapSvc)
+
+		assert.Equal(t, 0, code)
+		require.NotNil(t, receivedFilter)
+		require.Len(t, receivedFilter.Include, 1)
+		assert.Equal(t, "/api/", receivedFilter.Include[0].String())
+	})
+
+	t.Run("preview with multiple filters passes all to sitemap service", func(t *testing.T) {
+		t.Parallel()
+
+		var receivedFilter *locdoc.URLFilter
+		sitemapSvc := &mock.SitemapService{
+			DiscoverURLsFn: func(ctx context.Context, baseURL string, filter *locdoc.URLFilter) ([]string, error) {
+				receivedFilter = filter
+				return []string{"https://example.com/docs/page"}, nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{
+			"myproject", "https://example.com/docs",
+			"--preview",
+			"--filter", "docs",
+			"--filter", "blog",
+		}, stdout, stderr, nil, sitemapSvc)
+
+		assert.Equal(t, 0, code)
+		require.NotNil(t, receivedFilter)
+		require.Len(t, receivedFilter.Include, 2)
+		assert.Equal(t, "docs", receivedFilter.Include[0].String())
+		assert.Equal(t, "blog", receivedFilter.Include[1].String())
+	})
+
+	t.Run("stores filter on project creation", func(t *testing.T) {
+		t.Parallel()
+
+		var createdProject *locdoc.Project
+		projectSvc := &mock.ProjectService{
+			CreateProjectFn: func(ctx context.Context, p *locdoc.Project) error {
+				p.ID = "test-id-123"
+				createdProject = p
+				return nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{
+			"myproject", "https://example.com/docs",
+			"--filter", "api",
+			"--filter", "docs",
+		}, stdout, stderr, projectSvc, nil)
+
+		assert.Equal(t, 0, code)
+		require.NotNil(t, createdProject)
+		assert.Equal(t, "api\ndocs", createdProject.Filter)
+	})
+
+	t.Run("returns error for invalid filter regex", func(t *testing.T) {
+		t.Parallel()
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{
+			"myproject", "https://example.com/docs",
+			"--filter", "[invalid",
+		}, stdout, stderr, nil, nil)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "invalid")
+	})
+}
+
+func TestParseAddArgs(t *testing.T) {
+	t.Parallel()
+
+	t.Run("parses name and url", func(t *testing.T) {
+		t.Parallel()
+
+		opts, err := main.ParseAddArgs([]string{"myproject", "https://example.com/docs"})
+
+		require.NoError(t, err)
+		assert.Equal(t, "myproject", opts.Name)
+		assert.Equal(t, "https://example.com/docs", opts.URL)
+		assert.False(t, opts.Preview)
+		assert.Empty(t, opts.Filters)
+	})
+
+	t.Run("parses --preview flag", func(t *testing.T) {
+		t.Parallel()
+
+		opts, err := main.ParseAddArgs([]string{"myproject", "https://example.com/docs", "--preview"})
+
+		require.NoError(t, err)
+		assert.Equal(t, "myproject", opts.Name)
+		assert.Equal(t, "https://example.com/docs", opts.URL)
+		assert.True(t, opts.Preview)
+	})
+
+	t.Run("parses --preview flag in any position", func(t *testing.T) {
+		t.Parallel()
+
+		opts, err := main.ParseAddArgs([]string{"--preview", "myproject", "https://example.com/docs"})
+
+		require.NoError(t, err)
+		assert.Equal(t, "myproject", opts.Name)
+		assert.Equal(t, "https://example.com/docs", opts.URL)
+		assert.True(t, opts.Preview)
+	})
+
+	t.Run("returns error for missing url", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := main.ParseAddArgs([]string{"onlyname"})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "usage:")
+	})
+
+	t.Run("returns error for no arguments", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := main.ParseAddArgs([]string{})
+
+		assert.Error(t, err)
+	})
+
+	t.Run("parses single --filter flag", func(t *testing.T) {
+		t.Parallel()
+
+		opts, err := main.ParseAddArgs([]string{"myproject", "https://example.com/docs", "--filter", "docs"})
+
+		require.NoError(t, err)
+		assert.Equal(t, "myproject", opts.Name)
+		assert.Equal(t, "https://example.com/docs", opts.URL)
+		assert.Equal(t, []string{"docs"}, opts.Filters)
+	})
+
+	t.Run("parses multiple --filter flags", func(t *testing.T) {
+		t.Parallel()
+
+		opts, err := main.ParseAddArgs([]string{
+			"myproject", "https://example.com/docs",
+			"--filter", "docs",
+			"--filter", "blog",
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, []string{"docs", "blog"}, opts.Filters)
+	})
+
+	t.Run("parses --filter with --preview", func(t *testing.T) {
+		t.Parallel()
+
+		opts, err := main.ParseAddArgs([]string{
+			"myproject", "https://example.com/docs",
+			"--preview",
+			"--filter", "api",
+		})
+
+		require.NoError(t, err)
+		assert.True(t, opts.Preview)
+		assert.Equal(t, []string{"api"}, opts.Filters)
+	})
+
+	t.Run("returns error for --filter without value", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := main.ParseAddArgs([]string{"myproject", "https://example.com/docs", "--filter"})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "--filter")
+	})
+
+	t.Run("returns error for extra positional arguments", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := main.ParseAddArgs([]string{"myproject", "https://example.com/docs", "extraarg"})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unexpected")
+	})
 }
 
 func TestCmdList(t *testing.T) {
