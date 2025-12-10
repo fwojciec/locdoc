@@ -109,7 +109,7 @@ func (m *Main) printUsage(w io.Writer) {
 	fmt.Fprintln(w, "usage: locdoc <command> [args]")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Commands:")
-	fmt.Fprintln(w, "  add <name> <url>       Register a documentation project")
+	fmt.Fprintln(w, "  add <name> <url>       Add and crawl a documentation project")
 	fmt.Fprintln(w, "      --filter <regex>   Filter URLs by regex (can be repeated)")
 	fmt.Fprintln(w, "      --preview          Show URLs without creating project")
 	fmt.Fprintln(w, "  list                   List all registered projects")
@@ -126,7 +126,42 @@ func (m *Main) usage(w io.Writer) error {
 
 func (m *Main) runAdd(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	sitemapSvc := lochttp.NewSitemapService(nil)
-	code := CmdAdd(ctx, args, stdout, stderr, m.ProjectService, sitemapSvc)
+
+	// Check for preview mode before initializing expensive crawl dependencies
+	previewMode := false
+	for _, arg := range args {
+		if arg == "--preview" {
+			previewMode = true
+			break
+		}
+	}
+
+	var crawlDeps *CrawlDeps
+	if !previewMode {
+		// Wire crawl dependencies only when we'll actually crawl
+		fetcher, err := rod.NewFetcher()
+		if err != nil {
+			return fmt.Errorf("failed to start browser: %w", err)
+		}
+		defer fetcher.Close()
+		extractor := trafilatura.NewExtractor()
+		converter := htmltomarkdown.NewConverter()
+
+		tokenCounter, err := gemini.NewTokenCounter(defaultTokenizerModel)
+		if err != nil {
+			return fmt.Errorf("failed to create token counter: %w", err)
+		}
+
+		crawlDeps = &CrawlDeps{
+			Documents:    m.DocumentService,
+			Fetcher:      fetcher,
+			Extractor:    extractor,
+			Converter:    converter,
+			TokenCounter: tokenCounter,
+		}
+	}
+
+	code := CmdAdd(ctx, args, stdout, stderr, m.ProjectService, sitemapSvc, crawlDeps)
 	if code != 0 {
 		return fmt.Errorf("add command failed")
 	}
@@ -230,6 +265,15 @@ type AddOptions struct {
 	Filters []string
 }
 
+// CrawlDeps holds dependencies for crawling documents.
+type CrawlDeps struct {
+	Documents    locdoc.DocumentService
+	Fetcher      locdoc.Fetcher
+	Extractor    locdoc.Extractor
+	Converter    locdoc.Converter
+	TokenCounter locdoc.TokenCounter
+}
+
 // ParseAddArgs parses command-line arguments for the add command.
 func ParseAddArgs(args []string) (*AddOptions, error) {
 	opts := &AddOptions{}
@@ -262,8 +306,8 @@ func ParseAddArgs(args []string) (*AddOptions, error) {
 	return opts, nil
 }
 
-// CmdAdd handles the "add" command to register a new project.
-func CmdAdd(ctx context.Context, args []string, stdout, stderr io.Writer, projects locdoc.ProjectService, sitemaps locdoc.SitemapService) int {
+// CmdAdd handles the "add" command to register a new project and crawl it.
+func CmdAdd(ctx context.Context, args []string, stdout, stderr io.Writer, projects locdoc.ProjectService, sitemaps locdoc.SitemapService, crawlDeps *CrawlDeps) int {
 	opts, err := ParseAddArgs(args)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -313,6 +357,17 @@ func CmdAdd(ctx context.Context, args []string, stdout, stderr io.Writer, projec
 	}
 
 	fmt.Fprintf(stdout, "Added project %q (%s)\n", opts.Name, project.ID)
+
+	// Crawl documents if crawl dependencies are provided
+	if crawlDeps != nil && sitemaps != nil {
+		if err := crawlProject(ctx, project, stdout, stderr,
+			sitemaps, crawlDeps.Fetcher, crawlDeps.Extractor, crawlDeps.Converter,
+			crawlDeps.Documents, crawlDeps.TokenCounter); err != nil {
+			fmt.Fprintf(stderr, "error crawling: %v\n", err)
+			return 1
+		}
+	}
+
 	return 0
 }
 
@@ -423,8 +478,24 @@ func crawlProject(
 	documents locdoc.DocumentService,
 	tokenCounter locdoc.TokenCounter,
 ) error {
+	// Reconstruct URLFilter from project's stored filter patterns
+	var urlFilter *locdoc.URLFilter
+	if project.Filter != "" {
+		urlFilter = &locdoc.URLFilter{}
+		for _, pattern := range strings.Split(project.Filter, "\n") {
+			if pattern == "" {
+				continue
+			}
+			re, err := regexp.Compile(pattern)
+			if err != nil {
+				return fmt.Errorf("invalid filter pattern %q: %w", pattern, err)
+			}
+			urlFilter.Include = append(urlFilter.Include, re)
+		}
+	}
+
 	// Discover URLs from sitemap
-	urls, err := sitemap.DiscoverURLs(ctx, project.SourceURL, nil)
+	urls, err := sitemap.DiscoverURLs(ctx, project.SourceURL, urlFilter)
 	if err != nil {
 		return fmt.Errorf("sitemap discovery: %w", err)
 	}

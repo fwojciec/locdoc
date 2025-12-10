@@ -40,7 +40,7 @@ func TestCmdAdd(t *testing.T) {
 		stdout := &bytes.Buffer{}
 		stderr := &bytes.Buffer{}
 
-		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs"}, stdout, stderr, projectSvc, nil)
+		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs"}, stdout, stderr, projectSvc, nil, nil)
 
 		assert.Equal(t, 0, code)
 		assert.Contains(t, stdout.String(), "Added project")
@@ -57,7 +57,7 @@ func TestCmdAdd(t *testing.T) {
 		stdout := &bytes.Buffer{}
 		stderr := &bytes.Buffer{}
 
-		code := main.CmdAdd(testContext(), []string{"onlyname"}, stdout, stderr, nil, nil)
+		code := main.CmdAdd(testContext(), []string{"onlyname"}, stdout, stderr, nil, nil, nil)
 
 		assert.Equal(t, 1, code)
 		assert.Contains(t, stderr.String(), "usage:")
@@ -70,7 +70,7 @@ func TestCmdAdd(t *testing.T) {
 		stdout := &bytes.Buffer{}
 		stderr := &bytes.Buffer{}
 
-		code := main.CmdAdd(testContext(), []string{}, stdout, stderr, nil, nil)
+		code := main.CmdAdd(testContext(), []string{}, stdout, stderr, nil, nil, nil)
 
 		assert.Equal(t, 1, code)
 		assert.Contains(t, stderr.String(), "usage:")
@@ -88,7 +88,7 @@ func TestCmdAdd(t *testing.T) {
 		stdout := &bytes.Buffer{}
 		stderr := &bytes.Buffer{}
 
-		code := main.CmdAdd(testContext(), []string{"existing", "https://example.com"}, stdout, stderr, projectSvc, nil)
+		code := main.CmdAdd(testContext(), []string{"existing", "https://example.com"}, stdout, stderr, projectSvc, nil, nil)
 
 		assert.Equal(t, 1, code)
 		assert.Contains(t, stderr.String(), "error:")
@@ -120,7 +120,7 @@ func TestCmdAdd(t *testing.T) {
 		stdout := &bytes.Buffer{}
 		stderr := &bytes.Buffer{}
 
-		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs", "--preview"}, stdout, stderr, projectSvc, sitemapSvc)
+		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs", "--preview"}, stdout, stderr, projectSvc, sitemapSvc, nil)
 
 		assert.Equal(t, 0, code)
 		assert.False(t, createCalled, "CreateProject should not be called in preview mode")
@@ -142,7 +142,7 @@ func TestCmdAdd(t *testing.T) {
 		stdout := &bytes.Buffer{}
 		stderr := &bytes.Buffer{}
 
-		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs", "--preview"}, stdout, stderr, nil, sitemapSvc)
+		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs", "--preview"}, stdout, stderr, nil, sitemapSvc, nil)
 
 		assert.Equal(t, 1, code)
 		assert.Contains(t, stderr.String(), "error:")
@@ -156,7 +156,7 @@ func TestCmdAdd(t *testing.T) {
 		stdout := &bytes.Buffer{}
 		stderr := &bytes.Buffer{}
 
-		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs", "--preview"}, stdout, stderr, nil, nil)
+		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs", "--preview"}, stdout, stderr, nil, nil, nil)
 
 		assert.Equal(t, 1, code)
 		assert.Contains(t, stderr.String(), "error:")
@@ -184,7 +184,7 @@ func TestCmdAdd(t *testing.T) {
 			"myproject", "https://example.com/docs",
 			"--preview",
 			"--filter", "/api/",
-		}, stdout, stderr, nil, sitemapSvc)
+		}, stdout, stderr, nil, sitemapSvc, nil)
 
 		assert.Equal(t, 0, code)
 		require.NotNil(t, receivedFilter)
@@ -211,7 +211,7 @@ func TestCmdAdd(t *testing.T) {
 			"--preview",
 			"--filter", "docs",
 			"--filter", "blog",
-		}, stdout, stderr, nil, sitemapSvc)
+		}, stdout, stderr, nil, sitemapSvc, nil)
 
 		assert.Equal(t, 0, code)
 		require.NotNil(t, receivedFilter)
@@ -239,7 +239,7 @@ func TestCmdAdd(t *testing.T) {
 			"myproject", "https://example.com/docs",
 			"--filter", "api",
 			"--filter", "docs",
-		}, stdout, stderr, projectSvc, nil)
+		}, stdout, stderr, projectSvc, nil, nil)
 
 		assert.Equal(t, 0, code)
 		require.NotNil(t, createdProject)
@@ -255,10 +255,159 @@ func TestCmdAdd(t *testing.T) {
 		code := main.CmdAdd(testContext(), []string{
 			"myproject", "https://example.com/docs",
 			"--filter", "[invalid",
-		}, stdout, stderr, nil, nil)
+		}, stdout, stderr, nil, nil, nil)
 
 		assert.Equal(t, 1, code)
 		assert.Contains(t, stderr.String(), "invalid")
+	})
+
+	t.Run("creates project and crawls documents", func(t *testing.T) {
+		t.Parallel()
+
+		var createdProject *locdoc.Project
+		projectSvc := &mock.ProjectService{
+			CreateProjectFn: func(ctx context.Context, p *locdoc.Project) error {
+				p.ID = "test-id-123"
+				createdProject = p
+				return nil
+			},
+		}
+
+		var createdDocs []*locdoc.Document
+		documentSvc := &mock.DocumentService{
+			FindDocumentsFn: func(ctx context.Context, filter locdoc.DocumentFilter) ([]*locdoc.Document, error) {
+				return nil, nil // No existing docs
+			},
+			CreateDocumentFn: func(ctx context.Context, doc *locdoc.Document) error {
+				doc.ID = "doc-" + doc.SourceURL
+				createdDocs = append(createdDocs, doc)
+				return nil
+			},
+		}
+
+		sitemapSvc := &mock.SitemapService{
+			DiscoverURLsFn: func(ctx context.Context, baseURL string, filter *locdoc.URLFilter) ([]string, error) {
+				return []string{
+					"https://example.com/docs/page1",
+					"https://example.com/docs/page2",
+				}, nil
+			},
+		}
+
+		fetcher := &mock.Fetcher{
+			FetchFn: func(ctx context.Context, url string) (string, error) {
+				return "<html><body><h1>Test</h1><p>Content</p></body></html>", nil
+			},
+			CloseFn: func() error { return nil },
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test Page", ContentHTML: "<p>Content</p>"}, nil
+			},
+		}
+
+		converter := &mock.Converter{
+			ConvertFn: func(html string) (string, error) {
+				return "# Content\n\nSome text", nil
+			},
+		}
+
+		crawlDeps := &main.CrawlDeps{
+			Documents:    documentSvc,
+			Fetcher:      fetcher,
+			Extractor:    extractor,
+			Converter:    converter,
+			TokenCounter: nil,
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs"}, stdout, stderr, projectSvc, sitemapSvc, crawlDeps)
+
+		assert.Equal(t, 0, code)
+		assert.Contains(t, stdout.String(), "Added project")
+		assert.Contains(t, stdout.String(), "Saved 2 pages")
+		assert.Empty(t, stderr.String())
+		require.NotNil(t, createdProject)
+		require.Len(t, createdDocs, 2)
+		assert.Equal(t, "test-id-123", createdDocs[0].ProjectID)
+	})
+
+	t.Run("applies filter during crawl", func(t *testing.T) {
+		t.Parallel()
+
+		var createdProject *locdoc.Project
+		projectSvc := &mock.ProjectService{
+			CreateProjectFn: func(ctx context.Context, p *locdoc.Project) error {
+				p.ID = "test-id-123"
+				createdProject = p
+				return nil
+			},
+		}
+
+		documentSvc := &mock.DocumentService{
+			FindDocumentsFn: func(ctx context.Context, filter locdoc.DocumentFilter) ([]*locdoc.Document, error) {
+				return nil, nil
+			},
+			CreateDocumentFn: func(ctx context.Context, doc *locdoc.Document) error {
+				doc.ID = "doc-" + doc.SourceURL
+				return nil
+			},
+		}
+
+		var receivedFilter *locdoc.URLFilter
+		sitemapSvc := &mock.SitemapService{
+			DiscoverURLsFn: func(ctx context.Context, baseURL string, filter *locdoc.URLFilter) ([]string, error) {
+				receivedFilter = filter
+				return []string{"https://example.com/docs/api/one"}, nil
+			},
+		}
+
+		fetcher := &mock.Fetcher{
+			FetchFn: func(ctx context.Context, url string) (string, error) {
+				return "<html><body><p>Content</p></body></html>", nil
+			},
+			CloseFn: func() error { return nil },
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Content</p>"}, nil
+			},
+		}
+
+		converter := &mock.Converter{
+			ConvertFn: func(html string) (string, error) {
+				return "Content", nil
+			},
+		}
+
+		crawlDeps := &main.CrawlDeps{
+			Documents:    documentSvc,
+			Fetcher:      fetcher,
+			Extractor:    extractor,
+			Converter:    converter,
+			TokenCounter: nil,
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{
+			"myproject", "https://example.com/docs",
+			"--filter", "/api/",
+		}, stdout, stderr, projectSvc, sitemapSvc, crawlDeps)
+
+		assert.Equal(t, 0, code)
+		assert.Empty(t, stderr.String())
+		require.NotNil(t, createdProject)
+		assert.Equal(t, "/api/", createdProject.Filter)
+		// Verify filter was passed to sitemap discovery during crawl
+		require.NotNil(t, receivedFilter, "filter should be passed to DiscoverURLs during crawl")
+		require.Len(t, receivedFilter.Include, 1)
+		assert.Equal(t, "/api/", receivedFilter.Include[0].String())
 	})
 }
 
