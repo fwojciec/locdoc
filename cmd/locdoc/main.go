@@ -121,7 +121,8 @@ func (m *Main) usage(w io.Writer) error {
 }
 
 func (m *Main) runAdd(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	code := CmdAdd(ctx, args, stdout, stderr, m.ProjectService)
+	sitemapSvc := lochttp.NewSitemapService(nil)
+	code := CmdAdd(ctx, args, stdout, stderr, m.ProjectService, sitemapSvc)
 	if code != 0 {
 		return fmt.Errorf("add command failed")
 	}
@@ -218,13 +219,41 @@ func defaultDBPath() string {
 }
 
 // CmdAdd handles the "add" command to register a new project.
-func CmdAdd(ctx context.Context, args []string, stdout, stderr io.Writer, projects locdoc.ProjectService) int {
-	if len(args) != 2 {
-		fmt.Fprintln(stderr, "usage: locdoc add <name> <url>")
+func CmdAdd(ctx context.Context, args []string, stdout, stderr io.Writer, projects locdoc.ProjectService, sitemaps locdoc.SitemapService) int {
+	// Parse flags
+	var preview bool
+	var positional []string
+	for _, arg := range args {
+		if arg == "--preview" {
+			preview = true
+		} else {
+			positional = append(positional, arg)
+		}
+	}
+
+	if len(positional) != 2 {
+		fmt.Fprintln(stderr, "usage: locdoc add <name> <url> [--preview]")
 		return 1
 	}
 
-	name, url := args[0], args[1]
+	name, url := positional[0], positional[1]
+
+	// Preview mode: show URLs without creating project
+	if preview {
+		if sitemaps == nil {
+			fmt.Fprintln(stderr, "error: preview mode requires sitemap service")
+			return 1
+		}
+		urls, err := sitemaps.DiscoverURLs(ctx, url, nil)
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %s\n", err)
+			return 1
+		}
+		for _, u := range urls {
+			fmt.Fprintln(stdout, u)
+		}
+		return 0
+	}
 
 	project := &locdoc.Project{
 		Name:      name,
