@@ -42,6 +42,28 @@ func TestProjectService_CreateProject(t *testing.T) {
 		assert.False(t, project.UpdatedAt.IsZero(), "UpdatedAt should be set")
 	})
 
+	t.Run("persists filter field", func(t *testing.T) {
+		t.Parallel()
+
+		db := setupTestDB(t)
+		svc := sqlite.NewProjectService(db)
+		ctx := context.Background()
+
+		project := &locdoc.Project{
+			Name:      "test-project",
+			SourceURL: "https://example.com/docs",
+			Filter:    "/api/**",
+		}
+
+		err := svc.CreateProject(ctx, project)
+		require.NoError(t, err)
+
+		// Retrieve and verify filter is persisted
+		found, err := svc.FindProjectByID(ctx, project.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "/api/**", found.Filter)
+	})
+
 	t.Run("returns error for invalid project", func(t *testing.T) {
 		t.Parallel()
 
