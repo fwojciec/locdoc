@@ -291,3 +291,173 @@ func newTestServer(t *testing.T, content map[string]string) *httptest.Server {
 func replaceBaseURL(content, baseURL string) string {
 	return regexp.MustCompile(`\{\{BASE\}\}`).ReplaceAllString(content, baseURL)
 }
+
+func TestSitemapService_DiscoverURLs_FiltersBySourcePathPrefix(t *testing.T) {
+	t.Parallel()
+
+	// Sitemap contains URLs from multiple paths
+	sitemapXML := `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{{BASE}}/docs/intro</loc></url>
+  <url><loc>{{BASE}}/docs/guide</loc></url>
+  <url><loc>{{BASE}}/examples/basic</loc></url>
+  <url><loc>{{BASE}}/essays/htmx</loc></url>
+  <url><loc>{{BASE}}/</loc></url>
+</urlset>`
+
+	srv := newTestServer(t, map[string]string{
+		"/sitemap.xml": sitemapXML,
+	})
+	defer srv.Close()
+
+	// Request with /docs/ path - should only get /docs/* URLs
+	svc := locdochttp.NewSitemapService(srv.Client())
+	urls, err := svc.DiscoverURLs(context.Background(), srv.URL+"/docs/", nil)
+
+	require.NoError(t, err)
+	assert.Len(t, urls, 2)
+	assert.Contains(t, urls, srv.URL+"/docs/intro")
+	assert.Contains(t, urls, srv.URL+"/docs/guide")
+}
+
+func TestSitemapService_DiscoverURLs_NoFilterForRootPath(t *testing.T) {
+	t.Parallel()
+
+	sitemapXML := `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{{BASE}}/docs/intro</loc></url>
+  <url><loc>{{BASE}}/examples/basic</loc></url>
+  <url><loc>{{BASE}}/</loc></url>
+</urlset>`
+
+	srv := newTestServer(t, map[string]string{
+		"/sitemap.xml": sitemapXML,
+	})
+	defer srv.Close()
+
+	// Request with root path - should get all URLs
+	svc := locdochttp.NewSitemapService(srv.Client())
+	urls, err := svc.DiscoverURLs(context.Background(), srv.URL+"/", nil)
+
+	require.NoError(t, err)
+	assert.Len(t, urls, 3)
+}
+
+func TestSitemapService_DiscoverURLs_PathPrefixCombinesWithExplicitFilter(t *testing.T) {
+	t.Parallel()
+
+	sitemapXML := `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{{BASE}}/docs/intro</loc></url>
+  <url><loc>{{BASE}}/docs/internal/debug</loc></url>
+  <url><loc>{{BASE}}/docs/guide</loc></url>
+  <url><loc>{{BASE}}/examples/basic</loc></url>
+</urlset>`
+
+	srv := newTestServer(t, map[string]string{
+		"/sitemap.xml": sitemapXML,
+	})
+	defer srv.Close()
+
+	// Request with /docs/ path AND exclude /internal/
+	filter := &locdoc.URLFilter{
+		Exclude: []*regexp.Regexp{regexp.MustCompile(`/internal/`)},
+	}
+
+	svc := locdochttp.NewSitemapService(srv.Client())
+	urls, err := svc.DiscoverURLs(context.Background(), srv.URL+"/docs/", filter)
+
+	require.NoError(t, err)
+	assert.Len(t, urls, 2)
+	assert.Contains(t, urls, srv.URL+"/docs/intro")
+	assert.Contains(t, urls, srv.URL+"/docs/guide")
+}
+
+func TestSitemapService_DiscoverURLs_PathPrefixWithoutTrailingSlash(t *testing.T) {
+	t.Parallel()
+
+	sitemapXML := `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{{BASE}}/docs/intro</loc></url>
+  <url><loc>{{BASE}}/docs/guide</loc></url>
+  <url><loc>{{BASE}}/documentation/api</loc></url>
+</urlset>`
+
+	srv := newTestServer(t, map[string]string{
+		"/sitemap.xml": sitemapXML,
+	})
+	defer srv.Close()
+
+	// Request with /docs path (no trailing slash) should still work and not match /documentation
+	svc := locdochttp.NewSitemapService(srv.Client())
+	urls, err := svc.DiscoverURLs(context.Background(), srv.URL+"/docs", nil)
+
+	require.NoError(t, err)
+	assert.Len(t, urls, 2)
+	assert.Contains(t, urls, srv.URL+"/docs/intro")
+	assert.Contains(t, urls, srv.URL+"/docs/guide")
+	assert.NotContains(t, urls, srv.URL+"/documentation/api")
+}
+
+func TestSitemapService_DiscoverURLs_PathPrefixRespectsBoundaries(t *testing.T) {
+	t.Parallel()
+
+	sitemapXML := `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{{BASE}}/api/v1/docs</loc></url>
+  <url><loc>{{BASE}}/api/v1/reference</loc></url>
+  <url><loc>{{BASE}}/api/v2/docs</loc></url>
+  <url><loc>{{BASE}}/api/v20/docs</loc></url>
+</urlset>`
+
+	srv := newTestServer(t, map[string]string{
+		"/sitemap.xml": sitemapXML,
+	})
+	defer srv.Close()
+
+	// /api/v2/ should match /api/v2/* but not /api/v20/*
+	svc := locdochttp.NewSitemapService(srv.Client())
+	urls, err := svc.DiscoverURLs(context.Background(), srv.URL+"/api/v2/", nil)
+
+	require.NoError(t, err)
+	assert.Len(t, urls, 1)
+	assert.Contains(t, urls, srv.URL+"/api/v2/docs")
+}
+
+func TestSitemapService_DiscoverURLs_FindsSitemapAtDomainRoot(t *testing.T) {
+	t.Parallel()
+
+	// Sitemap exists ONLY at domain root, not under /docs/
+	// This test documents that sitemap discovery always happens at the domain root,
+	// regardless of the path in the source URL.
+	sitemapXML := `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{{BASE}}/docs/intro</loc></url>
+</urlset>`
+
+	var requestedPaths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPaths = append(requestedPaths, r.URL.Path)
+
+		if r.URL.Path == "/sitemap.xml" {
+			w.Header().Set("Content-Type", "application/xml")
+			body := replaceBaseURL(sitemapXML, "http://"+r.Host)
+			_, _ = w.Write([]byte(body))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	svc := locdochttp.NewSitemapService(srv.Client())
+	urls, err := svc.DiscoverURLs(context.Background(), srv.URL+"/docs/", nil)
+
+	require.NoError(t, err)
+	assert.Len(t, urls, 1)
+
+	// Verify we looked for sitemap at root, not under /docs/
+	assert.Contains(t, requestedPaths, "/robots.txt", "should check robots.txt at root")
+	assert.Contains(t, requestedPaths, "/sitemap.xml", "should check sitemap.xml at root")
+	assert.NotContains(t, requestedPaths, "/docs/robots.txt", "should NOT check robots.txt under path")
+	assert.NotContains(t, requestedPaths, "/docs/sitemap.xml", "should NOT check sitemap.xml under path")
+}
