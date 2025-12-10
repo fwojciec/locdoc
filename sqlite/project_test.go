@@ -64,6 +64,26 @@ func TestProjectService_CreateProject(t *testing.T) {
 		assert.Equal(t, "/api/**", found.Filter)
 	})
 
+	t.Run("defaults filter to empty string", func(t *testing.T) {
+		t.Parallel()
+
+		db := setupTestDB(t)
+		svc := sqlite.NewProjectService(db)
+		ctx := context.Background()
+
+		project := &locdoc.Project{
+			Name:      "test-project",
+			SourceURL: "https://example.com/docs",
+		}
+
+		err := svc.CreateProject(ctx, project)
+		require.NoError(t, err)
+
+		found, err := svc.FindProjectByID(ctx, project.ID)
+		require.NoError(t, err)
+		assert.Empty(t, found.Filter)
+	})
+
 	t.Run("returns error for invalid project", func(t *testing.T) {
 		t.Parallel()
 

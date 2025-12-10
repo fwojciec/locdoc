@@ -50,11 +50,17 @@ locdoc ask <name> "question"                       # Query docs
 
 ### Database Change
 
-Add `filter` column to projects table:
+Add `filter` column to projects table schema:
 
 ```sql
-ALTER TABLE projects ADD COLUMN filter TEXT;
+CREATE TABLE projects (
+    ...
+    filter TEXT NOT NULL DEFAULT '',
+    ...
+);
 ```
+
+Note: No migration needed - column added directly to schema since project not yet deployed.
 
 ### Why Delete + Recreate
 
@@ -67,7 +73,7 @@ Since we fetch everything anyway, the diffing provides minimal benefit (saves so
 
 ## Implementation Tasks
 
-1. Add `filter` column to projects table (migration)
+1. Add `filter` column to projects table schema
 2. Update `CmdAdd` to accept `--force`, `--preview`, `--filter` flags
 3. Implement preview mode (sitemap discovery + display, no crawl)
 4. Implement filter matching logic
