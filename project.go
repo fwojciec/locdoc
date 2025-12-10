@@ -11,6 +11,7 @@ type Project struct {
 	Name      string    `json:"name"`
 	SourceURL string    `json:"sourceUrl"`
 	LocalPath string    `json:"localPath"`
+	Filter    string    `json:"filter"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -61,4 +62,5 @@ type ProjectUpdate struct {
 	Name      *string `json:"name"`
 	SourceURL *string `json:"sourceUrl"`
 	LocalPath *string `json:"localPath"`
+	Filter    *string `json:"filter"`
 }

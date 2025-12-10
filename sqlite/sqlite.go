@@ -109,6 +109,7 @@ func (db *DB) createSchema() error {
 			name TEXT NOT NULL,
 			source_url TEXT NOT NULL,
 			local_path TEXT NOT NULL DEFAULT '',
+			filter TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);

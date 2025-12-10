@@ -36,9 +36,9 @@ func (s *ProjectService) CreateProject(ctx context.Context, project *locdoc.Proj
 	project.UpdatedAt = now
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO projects (id, name, source_url, local_path, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, project.ID, project.Name, project.SourceURL, project.LocalPath,
+		INSERT INTO projects (id, name, source_url, local_path, filter, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, project.ID, project.Name, project.SourceURL, project.LocalPath, project.Filter,
 		project.CreatedAt.Format(time.RFC3339), project.UpdatedAt.Format(time.RFC3339))
 
 	return err
@@ -50,10 +50,10 @@ func (s *ProjectService) FindProjectByID(ctx context.Context, id string) (*locdo
 	var createdAt, updatedAt string
 
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, name, source_url, local_path, created_at, updated_at
+		SELECT id, name, source_url, local_path, filter, created_at, updated_at
 		FROM projects
 		WHERE id = ?
-	`, id).Scan(&project.ID, &project.Name, &project.SourceURL, &project.LocalPath,
+	`, id).Scan(&project.ID, &project.Name, &project.SourceURL, &project.LocalPath, &project.Filter,
 		&createdAt, &updatedAt)
 
 	if err == sql.ErrNoRows {
@@ -81,7 +81,7 @@ func (s *ProjectService) FindProjects(ctx context.Context, filter locdoc.Project
 	var query strings.Builder
 	var args []any
 
-	query.WriteString("SELECT id, name, source_url, local_path, created_at, updated_at FROM projects WHERE 1=1")
+	query.WriteString("SELECT id, name, source_url, local_path, filter, created_at, updated_at FROM projects WHERE 1=1")
 
 	if filter.ID != nil {
 		query.WriteString(" AND id = ?")
@@ -114,7 +114,7 @@ func (s *ProjectService) FindProjects(ctx context.Context, filter locdoc.Project
 		var project locdoc.Project
 		var createdAt, updatedAt string
 
-		if err := rows.Scan(&project.ID, &project.Name, &project.SourceURL, &project.LocalPath,
+		if err := rows.Scan(&project.ID, &project.Name, &project.SourceURL, &project.LocalPath, &project.Filter,
 			&createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
@@ -153,6 +153,9 @@ func (s *ProjectService) UpdateProject(ctx context.Context, id string, upd locdo
 	if upd.LocalPath != nil {
 		project.LocalPath = *upd.LocalPath
 	}
+	if upd.Filter != nil {
+		project.Filter = *upd.Filter
+	}
 
 	// Validate before persisting
 	if err := project.Validate(); err != nil {
@@ -163,9 +166,9 @@ func (s *ProjectService) UpdateProject(ctx context.Context, id string, upd locdo
 
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE projects
-		SET name = ?, source_url = ?, local_path = ?, updated_at = ?
+		SET name = ?, source_url = ?, local_path = ?, filter = ?, updated_at = ?
 		WHERE id = ?
-	`, project.Name, project.SourceURL, project.LocalPath,
+	`, project.Name, project.SourceURL, project.LocalPath, project.Filter,
 		project.UpdatedAt.Format(time.RFC3339), id)
 
 	if err != nil {
