@@ -334,6 +334,81 @@ func TestCmdAdd(t *testing.T) {
 		require.Len(t, createdDocs, 2)
 		assert.Equal(t, "test-id-123", createdDocs[0].ProjectID)
 	})
+
+	t.Run("applies filter during crawl", func(t *testing.T) {
+		t.Parallel()
+
+		var createdProject *locdoc.Project
+		projectSvc := &mock.ProjectService{
+			CreateProjectFn: func(ctx context.Context, p *locdoc.Project) error {
+				p.ID = "test-id-123"
+				createdProject = p
+				return nil
+			},
+		}
+
+		documentSvc := &mock.DocumentService{
+			FindDocumentsFn: func(ctx context.Context, filter locdoc.DocumentFilter) ([]*locdoc.Document, error) {
+				return nil, nil
+			},
+			CreateDocumentFn: func(ctx context.Context, doc *locdoc.Document) error {
+				doc.ID = "doc-" + doc.SourceURL
+				return nil
+			},
+		}
+
+		var receivedFilter *locdoc.URLFilter
+		sitemapSvc := &mock.SitemapService{
+			DiscoverURLsFn: func(ctx context.Context, baseURL string, filter *locdoc.URLFilter) ([]string, error) {
+				receivedFilter = filter
+				return []string{"https://example.com/docs/api/one"}, nil
+			},
+		}
+
+		fetcher := &mock.Fetcher{
+			FetchFn: func(ctx context.Context, url string) (string, error) {
+				return "<html><body><p>Content</p></body></html>", nil
+			},
+			CloseFn: func() error { return nil },
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Content</p>"}, nil
+			},
+		}
+
+		converter := &mock.Converter{
+			ConvertFn: func(html string) (string, error) {
+				return "Content", nil
+			},
+		}
+
+		crawlDeps := &main.CrawlDeps{
+			Documents:    documentSvc,
+			Fetcher:      fetcher,
+			Extractor:    extractor,
+			Converter:    converter,
+			TokenCounter: nil,
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{
+			"myproject", "https://example.com/docs",
+			"--filter", "/api/",
+		}, stdout, stderr, projectSvc, sitemapSvc, crawlDeps)
+
+		assert.Equal(t, 0, code)
+		assert.Empty(t, stderr.String())
+		require.NotNil(t, createdProject)
+		assert.Equal(t, "/api/", createdProject.Filter)
+		// Verify filter was passed to sitemap discovery during crawl
+		require.NotNil(t, receivedFilter, "filter should be passed to DiscoverURLs during crawl")
+		require.Len(t, receivedFilter.Include, 1)
+		assert.Equal(t, "/api/", receivedFilter.Include[0].String())
+	})
 }
 
 func TestParseAddArgs(t *testing.T) {

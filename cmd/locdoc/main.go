@@ -127,26 +127,38 @@ func (m *Main) usage(w io.Writer) error {
 func (m *Main) runAdd(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	sitemapSvc := lochttp.NewSitemapService(nil)
 
-	// Wire crawl dependencies
-	fetcher, err := rod.NewFetcher()
-	if err != nil {
-		return fmt.Errorf("failed to start browser: %w", err)
-	}
-	defer fetcher.Close()
-	extractor := trafilatura.NewExtractor()
-	converter := htmltomarkdown.NewConverter()
-
-	tokenCounter, err := gemini.NewTokenCounter(defaultTokenizerModel)
-	if err != nil {
-		return fmt.Errorf("failed to create token counter: %w", err)
+	// Check for preview mode before initializing expensive crawl dependencies
+	previewMode := false
+	for _, arg := range args {
+		if arg == "--preview" {
+			previewMode = true
+			break
+		}
 	}
 
-	crawlDeps := &CrawlDeps{
-		Documents:    m.DocumentService,
-		Fetcher:      fetcher,
-		Extractor:    extractor,
-		Converter:    converter,
-		TokenCounter: tokenCounter,
+	var crawlDeps *CrawlDeps
+	if !previewMode {
+		// Wire crawl dependencies only when we'll actually crawl
+		fetcher, err := rod.NewFetcher()
+		if err != nil {
+			return fmt.Errorf("failed to start browser: %w", err)
+		}
+		defer fetcher.Close()
+		extractor := trafilatura.NewExtractor()
+		converter := htmltomarkdown.NewConverter()
+
+		tokenCounter, err := gemini.NewTokenCounter(defaultTokenizerModel)
+		if err != nil {
+			return fmt.Errorf("failed to create token counter: %w", err)
+		}
+
+		crawlDeps = &CrawlDeps{
+			Documents:    m.DocumentService,
+			Fetcher:      fetcher,
+			Extractor:    extractor,
+			Converter:    converter,
+			TokenCounter: tokenCounter,
+		}
 	}
 
 	code := CmdAdd(ctx, args, stdout, stderr, m.ProjectService, sitemapSvc, crawlDeps)
@@ -466,8 +478,24 @@ func crawlProject(
 	documents locdoc.DocumentService,
 	tokenCounter locdoc.TokenCounter,
 ) error {
+	// Reconstruct URLFilter from project's stored filter patterns
+	var urlFilter *locdoc.URLFilter
+	if project.Filter != "" {
+		urlFilter = &locdoc.URLFilter{}
+		for _, pattern := range strings.Split(project.Filter, "\n") {
+			if pattern == "" {
+				continue
+			}
+			re, err := regexp.Compile(pattern)
+			if err != nil {
+				return fmt.Errorf("invalid filter pattern %q: %w", pattern, err)
+			}
+			urlFilter.Include = append(urlFilter.Include, re)
+		}
+	}
+
 	// Discover URLs from sitemap
-	urls, err := sitemap.DiscoverURLs(ctx, project.SourceURL, nil)
+	urls, err := sitemap.DiscoverURLs(ctx, project.SourceURL, urlFilter)
 	if err != nil {
 		return fmt.Errorf("sitemap discovery: %w", err)
 	}
