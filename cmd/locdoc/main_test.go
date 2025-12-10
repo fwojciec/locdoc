@@ -362,6 +362,15 @@ func TestParseAddArgs(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "--filter")
 	})
+
+	t.Run("returns error for extra positional arguments", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := main.ParseAddArgs([]string{"myproject", "https://example.com/docs", "extraarg"})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unexpected")
+	})
 }
 
 func TestCmdList(t *testing.T) {

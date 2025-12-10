@@ -249,6 +249,8 @@ func ParseAddArgs(args []string) (*AddOptions, error) {
 				opts.Name = arg
 			} else if opts.URL == "" {
 				opts.URL = arg
+			} else {
+				return nil, fmt.Errorf("unexpected argument: %q\nusage: locdoc add <name> <url> [--preview] [--filter <pattern>...]", arg)
 			}
 		}
 	}
