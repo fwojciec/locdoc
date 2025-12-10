@@ -227,7 +227,159 @@ func TestCmdCrawl(t *testing.T) {
 		assert.Contains(t, stdout.String(), "Crawling")
 		assert.Contains(t, stdout.String(), projectName)
 		assert.Empty(t, stderr.String())
-		assert.Len(t, createdDocs, 2)
+		require.Len(t, createdDocs, 2)
+		assert.Equal(t, 0, createdDocs[0].Position)
+		assert.Equal(t, 1, createdDocs[1].Position)
+	})
+
+	t.Run("sets position when updating document content", func(t *testing.T) {
+		t.Parallel()
+
+		projectName := "myproject"
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				if filter.Name != nil && *filter.Name == projectName {
+					return []*locdoc.Project{
+						{ID: "proj-1", Name: projectName, SourceURL: "https://example.com"},
+					}, nil
+				}
+				return nil, nil
+			},
+		}
+
+		var updatedPosition *int
+		documentSvc := &mock.DocumentService{
+			FindDocumentsFn: func(ctx context.Context, filter locdoc.DocumentFilter) ([]*locdoc.Document, error) {
+				// Return existing document with different hash (content changed)
+				return []*locdoc.Document{
+					{ID: "doc-1", ProjectID: "proj-1", SourceURL: "https://example.com/page1", ContentHash: "old-hash", Position: 99},
+				}, nil
+			},
+			UpdateDocumentFn: func(ctx context.Context, id string, update locdoc.DocumentUpdate) (*locdoc.Document, error) {
+				updatedPosition = update.Position
+				return &locdoc.Document{ID: id}, nil
+			},
+		}
+
+		sitemapSvc := &mock.SitemapService{
+			DiscoverURLsFn: func(ctx context.Context, baseURL string, filter *locdoc.URLFilter) ([]string, error) {
+				return []string{"https://example.com/page1"}, nil
+			},
+		}
+
+		fetcher := &mock.Fetcher{
+			FetchFn: func(ctx context.Context, url string) (string, error) {
+				return "<html><body><p>New content</p></body></html>", nil
+			},
+			CloseFn: func() error { return nil },
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Page", ContentHTML: "<p>New content</p>"}, nil
+			},
+		}
+
+		converter := &mock.Converter{
+			ConvertFn: func(html string) (string, error) {
+				return "New content", nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdCrawl(
+			testContext(),
+			[]string{projectName},
+			stdout, stderr,
+			projectSvc, documentSvc,
+			sitemapSvc, fetcher, extractor, converter,
+		)
+
+		assert.Equal(t, 0, code)
+		require.NotNil(t, updatedPosition)
+		assert.Equal(t, 0, *updatedPosition)
+	})
+
+	t.Run("updates position when content unchanged but position changed", func(t *testing.T) {
+		t.Parallel()
+
+		projectName := "myproject"
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				if filter.Name != nil && *filter.Name == projectName {
+					return []*locdoc.Project{
+						{ID: "proj-1", Name: projectName, SourceURL: "https://example.com"},
+					}, nil
+				}
+				return nil, nil
+			},
+		}
+
+		// Test verifies position updates when content hash matches but position differs
+		contentToReturn := "same content"
+		var capturedHash string
+		var updatedPosition *int
+		documentSvc := &mock.DocumentService{
+			FindDocumentsFn: func(ctx context.Context, filter locdoc.DocumentFilter) ([]*locdoc.Document, error) {
+				// If we've captured the hash, return a doc with that hash but different position
+				if capturedHash != "" {
+					return []*locdoc.Document{
+						{ID: "doc-1", ProjectID: "proj-1", SourceURL: "https://example.com/page1", ContentHash: capturedHash, Position: 5},
+					}, nil
+				}
+				return nil, nil
+			},
+			UpdateDocumentFn: func(ctx context.Context, id string, update locdoc.DocumentUpdate) (*locdoc.Document, error) {
+				updatedPosition = update.Position
+				return &locdoc.Document{ID: id}, nil
+			},
+		}
+
+		sitemapSvc := &mock.SitemapService{
+			DiscoverURLsFn: func(ctx context.Context, baseURL string, filter *locdoc.URLFilter) ([]string, error) {
+				return []string{"https://example.com/page1"}, nil
+			},
+		}
+
+		fetcher := &mock.Fetcher{
+			FetchFn: func(ctx context.Context, url string) (string, error) {
+				return "<html></html>", nil
+			},
+			CloseFn: func() error { return nil },
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Page", ContentHTML: "<p>same</p>"}, nil
+			},
+		}
+
+		converter := &mock.Converter{
+			ConvertFn: func(html string) (string, error) {
+				return contentToReturn, nil
+			},
+		}
+
+		// First, compute the hash that the code will compute
+		capturedHash = main.ComputeHashForTest(contentToReturn)
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdCrawl(
+			testContext(),
+			[]string{projectName},
+			stdout, stderr,
+			projectSvc, documentSvc,
+			sitemapSvc, fetcher, extractor, converter,
+		)
+
+		assert.Equal(t, 0, code)
+		assert.Contains(t, stdout.String(), "position updated")
+		require.NotNil(t, updatedPosition)
+		assert.Equal(t, 0, *updatedPosition) // Position should be 0 (first in list)
 	})
 
 	t.Run("returns error when project not found", func(t *testing.T) {

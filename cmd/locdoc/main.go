@@ -311,7 +311,19 @@ func crawlProject(
 		// Check if document already exists with same hash
 		existing, _ := findDocumentByURL(ctx, documents, project.ID, url)
 		if existing != nil && existing.ContentHash == hash {
-			fmt.Fprintln(stdout, "    unchanged")
+			// Content unchanged, but check if position changed
+			if existing.Position != i {
+				position := i
+				if _, err := documents.UpdateDocument(ctx, existing.ID, locdoc.DocumentUpdate{
+					Position: &position,
+				}); err != nil {
+					fmt.Fprintf(stderr, "    error updating position: %v\n", err)
+					continue
+				}
+				fmt.Fprintln(stdout, "    position updated")
+			} else {
+				fmt.Fprintln(stdout, "    unchanged")
+			}
 			continue
 		}
 
@@ -322,14 +334,17 @@ func crawlProject(
 			Title:       result.Title,
 			Content:     markdown,
 			ContentHash: hash,
+			Position:    i,
 		}
 
 		if existing != nil {
 			// Update existing
+			position := i
 			if _, err := documents.UpdateDocument(ctx, existing.ID, locdoc.DocumentUpdate{
 				Title:       &doc.Title,
 				Content:     &doc.Content,
 				ContentHash: &doc.ContentHash,
+				Position:    &position,
 			}); err != nil {
 				fmt.Fprintf(stderr, "    error updating: %v\n", err)
 				continue
@@ -362,6 +377,11 @@ func findDocumentByURL(ctx context.Context, docs locdoc.DocumentService, project
 func computeHash(content string) string {
 	h := xxhash.Sum64String(content)
 	return fmt.Sprintf("%x", h)
+}
+
+// ComputeHashForTest is exported for testing purposes only.
+func ComputeHashForTest(content string) string {
+	return computeHash(content)
 }
 
 // CmdDelete handles the "delete" command to remove a project.
