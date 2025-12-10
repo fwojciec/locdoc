@@ -55,10 +55,12 @@ This project uses [beads](https://github.com/steveyegge/beads) for task tracking
 bd ready              # Show tasks with no blockers (start here)
 bd list               # Show all tasks
 bd show <id>          # Show task details
-bd create "title"     # Create new task
+bd create "title" --description "..."  # Create new task (ALWAYS include description)
 bd update <id> -s closed  # Mark task complete
 bd dep add <id> <blocker-id> --type blocks  # Add dependency
 ```
+
+**Always Include Descriptions**: Every issue must have a description following the template in "Writing Issues" below. Use `--description` flag or update immediately after creation.
 
 **Task IDs**: Use `locdoc-XXXX` format (e.g., `locdoc-hw3`).
 
