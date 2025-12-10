@@ -21,6 +21,7 @@ To retry a failed step in Inngest, use the step.retry() option...
 ## Key Decisions
 
 - **No RAG** — Entire documentation corpus sent to LLM. Simpler, more coherent answers. RAG can be added later if needed for very large doc sets.
+- **Position-ordered documents** — Documents fetched in sitemap position order (use `SortBy: "position"`). This provides coherent LLM context, with introductory material before advanced topics.
 - **Plain text output only** — No JSON or structured output. Users (human or LLM) just want the answer.
 - **Gemini Flash** — Chosen for 1M+ token context, explicit caching API (for future use), and low cost.
 - **No context caching initially** — Keep it simple. Caching can be layered on if query costs become a concern.
