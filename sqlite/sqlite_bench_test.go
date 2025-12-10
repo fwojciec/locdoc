@@ -34,10 +34,15 @@ func benchmarkDocumentInserts(b *testing.B, useWAL bool) {
 	db := sqlite.NewDB(dbPath)
 	require.NoError(b, db.Open())
 
-	// Enable WAL mode if requested
+	// Set journal mode explicitly.
+	// Open() enables WAL by default for file-based databases, so we need to
+	// switch back to DELETE (rollback journal) mode for the comparison benchmark.
+	ctx := context.Background()
 	if useWAL {
-		ctx := context.Background()
 		_, err := db.ExecContext(ctx, "PRAGMA journal_mode = WAL")
+		require.NoError(b, err)
+	} else {
+		_, err := db.ExecContext(ctx, "PRAGMA journal_mode = DELETE")
 		require.NoError(b, err)
 	}
 
@@ -49,7 +54,6 @@ func benchmarkDocumentInserts(b *testing.B, useWAL bool) {
 	}()
 
 	// Create a project for the documents
-	ctx := context.Background()
 	projectSvc := sqlite.NewProjectService(db)
 	project := &locdoc.Project{
 		Name:      "benchmark-project",
@@ -101,13 +105,17 @@ func benchmarkBulkInserts(b *testing.B, useWAL bool, docsPerCrawl int) {
 		db := sqlite.NewDB(dbPath)
 		require.NoError(b, db.Open())
 
+		// Set journal mode explicitly.
+		// Open() enables WAL by default for file-based databases, so we need to
+		// switch back to DELETE (rollback journal) mode for the comparison benchmark.
+		ctx := context.Background()
 		if useWAL {
-			ctx := context.Background()
 			_, err := db.ExecContext(ctx, "PRAGMA journal_mode = WAL")
 			require.NoError(b, err)
+		} else {
+			_, err := db.ExecContext(ctx, "PRAGMA journal_mode = DELETE")
+			require.NoError(b, err)
 		}
-
-		ctx := context.Background()
 		projectSvc := sqlite.NewProjectService(db)
 		project := &locdoc.Project{
 			Name:      "benchmark-project",

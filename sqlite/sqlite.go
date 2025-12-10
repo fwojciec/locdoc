@@ -35,12 +35,15 @@ func (db *DB) Open() error {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	// Enable WAL mode for better write performance.
+	// Enable WAL mode for file-based databases for better write performance.
 	// WAL is ~7x faster for writes and allows concurrent reads during writes.
 	// Trade-off: creates additional -wal and -shm files alongside the database.
-	if _, err := conn.Exec("PRAGMA journal_mode = WAL"); err != nil {
-		conn.Close()
-		return fmt.Errorf("failed to enable WAL mode: %w", err)
+	// Note: WAL mode is not supported for in-memory databases.
+	if db.path != ":memory:" {
+		if _, err := conn.Exec("PRAGMA journal_mode = WAL"); err != nil {
+			conn.Close()
+			return fmt.Errorf("failed to enable WAL mode: %w", err)
+		}
 	}
 
 	// Enable foreign key constraints
