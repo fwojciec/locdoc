@@ -409,6 +409,92 @@ func TestCmdAdd(t *testing.T) {
 		require.Len(t, receivedFilter.Include, 1)
 		assert.Equal(t, "/api/", receivedFilter.Include[0].String())
 	})
+
+	t.Run("with --force deletes existing project before creating", func(t *testing.T) {
+		t.Parallel()
+
+		var deletedID string
+		var createdProject *locdoc.Project
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				if filter.Name != nil && *filter.Name == "myproject" {
+					return []*locdoc.Project{
+						{ID: "existing-id", Name: "myproject", SourceURL: "https://old.com"},
+					}, nil
+				}
+				return nil, nil
+			},
+			DeleteProjectFn: func(ctx context.Context, id string) error {
+				deletedID = id
+				return nil
+			},
+			CreateProjectFn: func(ctx context.Context, p *locdoc.Project) error {
+				p.ID = "new-id-123"
+				createdProject = p
+				return nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs", "--force"}, stdout, stderr, projectSvc, nil, nil)
+
+		assert.Equal(t, 0, code)
+		assert.Equal(t, "existing-id", deletedID)
+		require.NotNil(t, createdProject)
+		assert.Equal(t, "myproject", createdProject.Name)
+		assert.Equal(t, "https://example.com/docs", createdProject.SourceURL)
+		assert.Contains(t, stdout.String(), "Added project")
+		assert.Empty(t, stderr.String())
+	})
+
+	t.Run("without --force errors on existing project", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			CreateProjectFn: func(ctx context.Context, p *locdoc.Project) error {
+				return locdoc.Errorf(locdoc.ECONFLICT, "project already exists")
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{"existing", "https://example.com"}, stdout, stderr, projectSvc, nil, nil)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "error:")
+		assert.Empty(t, stdout.String())
+	})
+
+	t.Run("with --force succeeds when project does not exist", func(t *testing.T) {
+		t.Parallel()
+
+		var createdProject *locdoc.Project
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				// No existing project
+				return nil, nil
+			},
+			CreateProjectFn: func(ctx context.Context, p *locdoc.Project) error {
+				p.ID = "new-id-123"
+				createdProject = p
+				return nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{"newproject", "https://example.com/docs", "--force"}, stdout, stderr, projectSvc, nil, nil)
+
+		assert.Equal(t, 0, code)
+		require.NotNil(t, createdProject)
+		assert.Equal(t, "newproject", createdProject.Name)
+		assert.Contains(t, stdout.String(), "Added project")
+		assert.Empty(t, stderr.String())
+	})
 }
 
 func TestParseAddArgs(t *testing.T) {
@@ -519,6 +605,28 @@ func TestParseAddArgs(t *testing.T) {
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unexpected")
+	})
+
+	t.Run("parses --force flag", func(t *testing.T) {
+		t.Parallel()
+
+		opts, err := main.ParseAddArgs([]string{"myproject", "https://example.com/docs", "--force"})
+
+		require.NoError(t, err)
+		assert.Equal(t, "myproject", opts.Name)
+		assert.Equal(t, "https://example.com/docs", opts.URL)
+		assert.True(t, opts.Force)
+	})
+
+	t.Run("parses --force flag in any position", func(t *testing.T) {
+		t.Parallel()
+
+		opts, err := main.ParseAddArgs([]string{"--force", "myproject", "https://example.com/docs"})
+
+		require.NoError(t, err)
+		assert.Equal(t, "myproject", opts.Name)
+		assert.Equal(t, "https://example.com/docs", opts.URL)
+		assert.True(t, opts.Force)
 	})
 }
 
