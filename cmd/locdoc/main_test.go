@@ -863,3 +863,112 @@ func TestCmdDocs(t *testing.T) {
 		assert.Empty(t, stderr.String())
 	})
 }
+
+func TestCmdAsk(t *testing.T) {
+	t.Parallel()
+
+	t.Run("asks question and returns answer", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				if filter.Name != nil && *filter.Name == "myproject" {
+					return []*locdoc.Project{
+						{ID: "proj-1", Name: "myproject", SourceURL: "https://example.com"},
+					}, nil
+				}
+				return nil, nil
+			},
+		}
+
+		asker := &mock.Asker{
+			AskFn: func(ctx context.Context, projectID, question string) (string, error) {
+				assert.Equal(t, "proj-1", projectID)
+				assert.Equal(t, "What is htmx?", question)
+				return "htmx is a library for building web applications.", nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAsk(testContext(), []string{"myproject", "What is htmx?"}, stdout, stderr, projectSvc, asker)
+
+		assert.Equal(t, 0, code)
+		assert.Contains(t, stdout.String(), "htmx is a library")
+		assert.Empty(t, stderr.String())
+	})
+
+	t.Run("returns error for missing arguments", func(t *testing.T) {
+		t.Parallel()
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAsk(testContext(), []string{"onlyproject"}, stdout, stderr, nil, nil)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "usage:")
+		assert.Empty(t, stdout.String())
+	})
+
+	t.Run("returns error for no arguments", func(t *testing.T) {
+		t.Parallel()
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAsk(testContext(), []string{}, stdout, stderr, nil, nil)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "usage:")
+		assert.Empty(t, stdout.String())
+	})
+
+	t.Run("returns error when project not found", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				return []*locdoc.Project{}, nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAsk(testContext(), []string{"nonexistent", "question?"}, stdout, stderr, projectSvc, nil)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), `project "nonexistent" not found`)
+		assert.Contains(t, stderr.String(), "locdoc list")
+		assert.Empty(t, stdout.String())
+	})
+
+	t.Run("returns error when asker fails", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			FindProjectsFn: func(ctx context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				return []*locdoc.Project{
+					{ID: "proj-1", Name: "myproject", SourceURL: "https://example.com"},
+				}, nil
+			},
+		}
+
+		asker := &mock.Asker{
+			AskFn: func(ctx context.Context, projectID, question string) (string, error) {
+				return "", locdoc.Errorf(locdoc.ENOTFOUND, "no documents found")
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAsk(testContext(), []string{"myproject", "question?"}, stdout, stderr, projectSvc, asker)
+
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "error:")
+		assert.Empty(t, stdout.String())
+	})
+}

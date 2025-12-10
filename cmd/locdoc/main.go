@@ -9,11 +9,13 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/fwojciec/locdoc"
+	"github.com/fwojciec/locdoc/gemini"
 	"github.com/fwojciec/locdoc/htmltomarkdown"
 	lochttp "github.com/fwojciec/locdoc/http"
 	"github.com/fwojciec/locdoc/rod"
 	"github.com/fwojciec/locdoc/sqlite"
 	"github.com/fwojciec/locdoc/trafilatura"
+	"google.golang.org/genai"
 )
 
 func main() {
@@ -85,6 +87,8 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return m.runCrawl(ctx, cmdArgs, stdout, stderr)
 	case "docs":
 		return m.runDocs(ctx, cmdArgs, stdout, stderr)
+	case "ask":
+		return m.runAsk(ctx, cmdArgs, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "error: unknown command %q\n", cmd)
 		return m.usage(stderr)
@@ -100,6 +104,7 @@ func (m *Main) usage(w io.Writer) error {
 	fmt.Fprintln(w, "  delete <name> --force  Delete a project and its documents")
 	fmt.Fprintln(w, "  crawl [name]           Crawl documentation for all or one project")
 	fmt.Fprintln(w, "  docs <name> [--full]   List documents for a project (--full for content)")
+	fmt.Fprintln(w, "  ask <name> \"<question>\" Ask a question about project documentation")
 	return fmt.Errorf("invalid usage")
 }
 
@@ -131,6 +136,33 @@ func (m *Main) runDocs(ctx context.Context, args []string, stdout, stderr io.Wri
 	code := CmdDocs(ctx, args, stdout, stderr, m.ProjectService, m.DocumentService)
 	if code != 0 {
 		return fmt.Errorf("docs command failed")
+	}
+	return nil
+}
+
+func (m *Main) runAsk(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	// Check for API key
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		fmt.Fprintln(stderr, "GEMINI_API_KEY environment variable not set. Get an API key at https://aistudio.google.com/apikey")
+		return fmt.Errorf("missing API key")
+	}
+
+	// Create Gemini client
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  apiKey,
+		Backend: genai.BackendGeminiAPI,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create Gemini client: %w", err)
+	}
+
+	// Wire asker
+	asker := gemini.NewAsker(client, m.DocumentService)
+
+	code := CmdAsk(ctx, args, stdout, stderr, m.ProjectService, asker)
+	if code != 0 {
+		return fmt.Errorf("ask command failed")
 	}
 	return nil
 }
@@ -464,6 +496,45 @@ func CmdDocs(
 		fmt.Fprintf(stdout, "  %d. %s\n     %s\n", i+1, title, doc.SourceURL)
 	}
 
+	return 0
+}
+
+// CmdAsk handles the "ask" command to query project documentation.
+func CmdAsk(
+	ctx context.Context,
+	args []string,
+	stdout, stderr io.Writer,
+	projects locdoc.ProjectService,
+	asker locdoc.Asker,
+) int {
+	if len(args) < 2 {
+		fmt.Fprintln(stderr, "usage: locdoc ask <project> \"<question>\"")
+		return 1
+	}
+
+	name, question := args[0], args[1]
+
+	// Find project by name
+	list, err := projects.FindProjects(ctx, locdoc.ProjectFilter{Name: &name})
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
+		return 1
+	}
+	if len(list) == 0 {
+		fmt.Fprintf(stderr, "project %q not found. Use \"locdoc list\" to see available projects.\n", name)
+		return 1
+	}
+
+	project := list[0]
+
+	// Ask the question
+	answer, err := asker.Ask(ctx, project.ID, question)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
+		return 1
+	}
+
+	fmt.Fprintln(stdout, answer)
 	return 0
 }
 
