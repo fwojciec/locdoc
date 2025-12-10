@@ -27,6 +27,13 @@ func NewAsker(client *genai.Client, docs locdoc.DocumentService) *Asker {
 
 // Ask answers a natural language question about a project's documentation.
 func (a *Asker) Ask(ctx context.Context, projectID, question string) (string, error) {
+	if projectID == "" {
+		return "", locdoc.Errorf(locdoc.EINVALID, "project ID required")
+	}
+	if question == "" {
+		return "", locdoc.Errorf(locdoc.EINVALID, "question required")
+	}
+
 	docs, err := a.docs.FindDocuments(ctx, locdoc.DocumentFilter{ProjectID: &projectID})
 	if err != nil {
 		return "", err
@@ -45,6 +52,9 @@ func (a *Asker) Ask(ctx context.Context, projectID, question string) (string, er
 	)
 	if err != nil {
 		return "", err
+	}
+	if result == nil {
+		return "", locdoc.Errorf(locdoc.EINTERNAL, "gemini returned nil result")
 	}
 
 	return result.Text(), nil
