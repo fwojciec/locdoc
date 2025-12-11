@@ -78,16 +78,20 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 	}
 	defer page.Close()
 
-	// Set context for all subsequent operations
-	page = page.Context(ctx)
+	// Create timeout context for entire fetch operation (navigate + wait + HTML)
+	fetchCtx, cancel := context.WithTimeout(ctx, f.fetchTimeout)
+	defer cancel()
 
-	// Navigate to URL with explicit timeout
-	if err := page.Timeout(f.fetchTimeout).Navigate(url); err != nil {
+	// Set context for all subsequent operations
+	page = page.Context(fetchCtx)
+
+	// Navigate to URL
+	if err := page.Navigate(url); err != nil {
 		return "", err
 	}
 
-	// Wait for page to load with explicit timeout
-	if err := page.Timeout(f.fetchTimeout).WaitLoad(); err != nil {
+	// Wait for page to load
+	if err := page.WaitLoad(); err != nil {
 		return "", err
 	}
 
