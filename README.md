@@ -12,6 +12,35 @@ AI coding assistants work well when they have access to library documentation. T
 
 The interface is intentionally minimal - a few straightforward commands that any agent can call without needing schema definitions or protocol negotiation.
 
+## Features
+
+**Intelligent Content Extraction**
+- Removes navigation, footers, sidebars, and ads automatically using go-trafilatura
+- JavaScript rendering via headless Chrome for SPAs and dynamic content
+- Preserves document structure (headers, lists, code blocks, tables)
+
+**Local Storage**
+- All crawled documentation stored in SQLite (~/.locdoc/locdoc.db)
+- No account or cloud storage required for crawling
+
+**LLM-Powered Q&A**
+- Natural language queries against stored documentation
+- Uses Gemini 2.5 Flash for fast, accurate answers
+
+**Flexible Crawling**
+- Regex-based URL filtering to target specific sections
+- Configurable concurrency for rate-limited sites
+- Preview mode to verify filter patterns before crawling
+- Progress tracking with real-time feedback
+
+## Limitations
+
+- **Requires sitemap.xml** - Sites without a sitemap cannot be crawled
+- **No GitHub/git support** - Cannot crawl README files or wikis from repositories
+- **No incremental updates** - Re-crawling fetches all pages (use `--force`)
+- **Single LLM provider** - Currently only supports Google Gemini
+- **No semantic search** - All documents sent to LLM (works well for small-medium doc sites)
+
 ## Status
 
 This project is written primarily by LLMs (Claude). Our goal is high-quality software, but this is alpha - expect bugs and edge cases we haven't covered yet. Contributions and bug reports welcome.
@@ -36,6 +65,7 @@ Options:
 - `--preview` - Show discovered URLs without creating project
 - `--force` - Delete existing project first (useful for re-crawling)
 - `--filter <regex>` - Only include URLs matching pattern (can be repeated)
+- `-c, --concurrency N` - Concurrent fetch limit (default: 10)
 
 ```bash
 # Preview what will be crawled
@@ -46,6 +76,9 @@ locdoc add htmx https://htmx.org/ --force
 
 # Filter to specific sections
 locdoc add htmx https://htmx.org/ --filter "/docs/" --filter "/examples/"
+
+# Limit concurrent fetches (useful for rate-limited sites)
+locdoc add htmx https://htmx.org/ -c 3
 ```
 
 ### List registered projects
