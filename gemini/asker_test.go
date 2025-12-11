@@ -2,6 +2,7 @@ package gemini_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/fwojciec/locdoc"
@@ -138,14 +139,52 @@ func TestBuildUserPrompt_MultipleDocuments(t *testing.T) {
 	assert.Contains(t, prompt, "<title>Doc Two</title>")
 }
 
-func TestBuildUserPrompt_ContainsQuestion(t *testing.T) {
+func TestBuildUserPrompt_QuestionInXMLTags(t *testing.T) {
 	t.Parallel()
 
-	docs := []*locdoc.Document{{Title: "Doc", Content: "Content"}}
+	docs := []*locdoc.Document{{Title: "Doc", SourceURL: "https://example.com", Content: "Content"}}
 
 	prompt := gemini.BuildUserPrompt(docs, "How do I use this?")
 
-	assert.Contains(t, prompt, "Question: How do I use this?")
+	assert.Contains(t, prompt, "<question>How do I use this?</question>")
+}
+
+func TestBuildUserPrompt_TrailingInstructions(t *testing.T) {
+	t.Parallel()
+
+	docs := []*locdoc.Document{{Title: "Doc", SourceURL: "https://example.com", Content: "Content"}}
+
+	prompt := gemini.BuildUserPrompt(docs, "question")
+
+	assert.Contains(t, prompt, "<instructions>")
+	assert.Contains(t, prompt, "</instructions>")
+}
+
+func TestBuildUserPrompt_InstructionsSpecifySourcesFormat(t *testing.T) {
+	t.Parallel()
+
+	docs := []*locdoc.Document{{Title: "Doc", SourceURL: "https://example.com", Content: "Content"}}
+
+	prompt := gemini.BuildUserPrompt(docs, "question")
+
+	assert.Contains(t, prompt, "---")
+	assert.Contains(t, prompt, "Sources:")
+}
+
+func TestBuildUserPrompt_SandwichOrder(t *testing.T) {
+	t.Parallel()
+
+	docs := []*locdoc.Document{{Title: "Doc", SourceURL: "https://example.com", Content: "Content"}}
+
+	prompt := gemini.BuildUserPrompt(docs, "question")
+
+	// Verify sandwich pattern: documents -> question -> instructions
+	docsEnd := strings.Index(prompt, "</documents>")
+	questionStart := strings.Index(prompt, "<question>")
+	instructionsStart := strings.Index(prompt, "<instructions>")
+
+	assert.Greater(t, questionStart, docsEnd, "question should come after documents")
+	assert.Greater(t, instructionsStart, questionStart, "instructions should come after question")
 }
 
 func TestBuildUserPrompt_DoesNotContainSystemInstruction(t *testing.T) {
