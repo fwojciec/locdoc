@@ -492,8 +492,10 @@ func crawlProject(
 			case <-ticker.C:
 				c, f, s := completed.Load(), failed.Load(), succeeded.Load()
 				u := *lastURL.Load()
-				fmt.Fprintf(stdout, "\r  [%d/%d] %s (%d failed, %d succeeded)",
+				line := fmt.Sprintf("  [%d/%d] %s (%d failed, %d succeeded)",
 					c, total, truncateURL(u, 40), f, s)
+				// Pad to 80 chars to overwrite previous longer lines
+				fmt.Fprintf(stdout, "\r%-80s", line)
 			case <-done:
 				return
 			}
@@ -538,8 +540,9 @@ func crawlProject(
 	// Print final progress state before clearing (ensures at least one progress line appears)
 	c, f, s := completed.Load(), failed.Load(), succeeded.Load()
 	u := *lastURL.Load()
-	fmt.Fprintf(stdout, "\r  [%d/%d] %s (%d failed, %d succeeded)",
+	line := fmt.Sprintf("  [%d/%d] %s (%d failed, %d succeeded)",
 		c, total, truncateURL(u, 40), f, s)
+	fmt.Fprintf(stdout, "\r%-80s", line)
 
 	// Clear progress line and move to next line
 	fmt.Fprintf(stdout, "\r%s\r", strings.Repeat(" ", 120))
