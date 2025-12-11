@@ -281,6 +281,9 @@ func ParseAddArgs(args []string) (*AddOptions, error) {
 			if err != nil {
 				return nil, fmt.Errorf("invalid concurrency value %q: must be a number", args[i])
 			}
+			if n < 1 {
+				return nil, fmt.Errorf("invalid concurrency value %q: must be a positive integer", args[i])
+			}
 			opts.Concurrency = n
 		default:
 			if opts.Name == "" {

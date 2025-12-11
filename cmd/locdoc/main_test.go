@@ -714,6 +714,24 @@ func TestParseAddArgs(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid")
 	})
+
+	t.Run("returns error for zero concurrency", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := main.ParseAddArgs([]string{"myproject", "https://example.com/docs", "--concurrency", "0"})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "positive")
+	})
+
+	t.Run("returns error for negative concurrency", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := main.ParseAddArgs([]string{"myproject", "https://example.com/docs", "--concurrency", "-5"})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "positive")
+	})
 }
 
 func TestCmdList(t *testing.T) {
