@@ -9,6 +9,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/fwojciec/locdoc"
@@ -252,6 +255,7 @@ type CrawlDeps struct {
 	Converter    locdoc.Converter
 	TokenCounter locdoc.TokenCounter
 	Concurrency  int
+	RetryDelays  []time.Duration // if nil, uses default delays (1s, 2s, 4s)
 }
 
 // ParseAddArgs parses command-line arguments for the add command.
@@ -374,7 +378,7 @@ func CmdAdd(ctx context.Context, args []string, stdout, stderr io.Writer, projec
 	if crawlDeps != nil && sitemaps != nil {
 		if err := crawlProject(ctx, project, stdout, stderr,
 			sitemaps, crawlDeps.Fetcher, crawlDeps.Extractor, crawlDeps.Converter,
-			crawlDeps.Documents, crawlDeps.TokenCounter, crawlDeps.Concurrency); err != nil {
+			crawlDeps.Documents, crawlDeps.TokenCounter, crawlDeps.Concurrency, crawlDeps.RetryDelays); err != nil {
 			fmt.Fprintf(stderr, "error crawling: %v\n", err)
 			return 1
 		}
@@ -428,6 +432,7 @@ func crawlProject(
 	documents locdoc.DocumentService,
 	tokenCounter locdoc.TokenCounter,
 	concurrency int,
+	retryDelays []time.Duration,
 ) error {
 	// Reconstruct URLFilter from project's stored filter patterns
 	var urlFilter *locdoc.URLFilter
@@ -470,50 +475,83 @@ func crawlProject(
 		fmt.Fprintf(stderr, format+"\n", args...)
 	}
 
-	// Start workers
+	// Progress tracking with atomic counters for thread safety
+	results := make([]crawlResult, len(urls))
+	var completed, failed, succeeded atomic.Int64
+	var lastURL atomic.Pointer[string]
+	emptyURL := ""
+	lastURL.Store(&emptyURL)
+	total := len(urls)
+
+	// Progress display goroutine - updates in place every 100ms
+	done := make(chan struct{})
+	var progressWg sync.WaitGroup
+	progressWg.Add(1)
+	go func() {
+		defer progressWg.Done()
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				c, f, s := completed.Load(), failed.Load(), succeeded.Load()
+				u := *lastURL.Load()
+				line := fmt.Sprintf("  [%d/%d] %s (%d failed, %d succeeded)",
+					c, total, truncateURL(u, 40), f, s)
+				// Pad to 80 chars to overwrite previous longer lines
+				fmt.Fprintf(stdout, "\r%-80s", line)
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	// Start workers in background goroutine so we can consume results immediately
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(concurrency)
 
-	for i, url := range urls {
-		i, url := i, url // capture loop variables
-		g.Go(func() error {
-			result := processURL(gctx, i, url, fetcher, extractor, converter, logger)
-			resultCh <- result
-			return nil // never return error to allow all goroutines to complete
-		})
-	}
-
-	// Close channel when all workers done
 	go func() {
-		_ = g.Wait() // errors handled per-URL, never returned
+		for i, url := range urls {
+			i, url := i, url // capture loop variables
+			g.Go(func() error {
+				result := processURL(gctx, i, url, fetcher, extractor, converter, logger, retryDelays)
+				resultCh <- result
+				return nil // never return error to allow all goroutines to complete
+			})
+		}
+		// Wait for all workers then close channel
+		_ = g.Wait()
 		close(resultCh)
 	}()
 
-	// Collect results and show progress
-	results := make([]crawlResult, len(urls))
-	var completed, failed, succeeded int
-	total := len(urls)
-
+	// Collect results
 	for result := range resultCh {
-		completed++
+		completed.Add(1)
+		url := result.url // copy to avoid storing pointer to loop variable
+		lastURL.Store(&url)
 		results[result.position] = result
 
 		if result.err != nil {
-			failed++
+			failed.Add(1)
 			// Print failure on its own line (persists in scroll history)
 			fmt.Fprintf(stderr, "  skip %s (%s failed): %v\n", result.url, result.errStage, result.err)
 		} else {
-			succeeded++
+			succeeded.Add(1)
 		}
-
-		// Update progress line in place (succeeded = fetched/extracted, not yet persisted)
-		fmt.Fprintf(stdout, "\r  [%d/%d] %s (%d failed, %d succeeded)",
-			completed, total, truncateURL(result.url, 40), failed, succeeded)
-		flushWriter(stdout)
 	}
 
-	// Clear progress line and move to next line
-	fmt.Fprintf(stdout, "\r%s\r", strings.Repeat(" ", 120))
+	close(done)
+	progressWg.Wait() // ensure progress goroutine has stopped before final print
+
+	// Print final progress state before clearing (ensures at least one progress line appears)
+	c, f, s := completed.Load(), failed.Load(), succeeded.Load()
+	u := *lastURL.Load()
+	line := fmt.Sprintf("  [%d/%d] %s (%d failed, %d succeeded)",
+		c, total, truncateURL(u, 40), f, s)
+	fmt.Fprintf(stdout, "\r%-80s", line)
+
+	// Clear progress line (overwrite with spaces, return cursor to start)
+	fmt.Fprintf(stdout, "\r%-80s\r", "")
 
 	// Accumulate stats for summary
 	var saved int
@@ -565,14 +603,6 @@ func truncateURL(url string, maxLen int) string {
 	return "..." + url[len(url)-maxLen+3:]
 }
 
-// flushWriter attempts to flush the writer if it supports flushing.
-// This ensures progress output is immediately visible rather than buffered.
-func flushWriter(w io.Writer) {
-	if f, ok := w.(interface{ Sync() error }); ok {
-		_ = f.Sync()
-	}
-}
-
 // formatBytes formats bytes in human-readable form.
 func formatBytes(bytes int) string {
 	const (
@@ -607,6 +637,7 @@ func processURL(
 	extractor locdoc.Extractor,
 	converter locdoc.Converter,
 	logger LogFunc,
+	retryDelays []time.Duration,
 ) crawlResult {
 	result := crawlResult{
 		position: position,
@@ -617,7 +648,11 @@ func processURL(
 	fetchFn := func(ctx context.Context, url string) (string, error) {
 		return fetcher.Fetch(ctx, url)
 	}
-	html, err := FetchWithRetry(ctx, url, fetchFn, logger)
+	delays := retryDelays
+	if delays == nil {
+		delays = defaultRetryDelays()
+	}
+	html, err := FetchWithRetryDelays(ctx, url, fetchFn, logger, delays)
 	if err != nil {
 		result.err = err
 		result.errStage = "fetch"
