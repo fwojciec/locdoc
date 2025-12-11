@@ -71,3 +71,57 @@ func TestAsker_Ask_ReturnsErrorWhenQuestionEmpty(t *testing.T) {
 	assert.Equal(t, locdoc.EINVALID, locdoc.ErrorCode(err))
 	assert.Contains(t, locdoc.ErrorMessage(err), "question required")
 }
+
+func TestBuildConfig_SetsSystemInstruction(t *testing.T) {
+	t.Parallel()
+
+	config := gemini.BuildConfig()
+
+	require.NotNil(t, config.SystemInstruction)
+	require.Len(t, config.SystemInstruction.Parts, 1)
+	assert.Contains(t, config.SystemInstruction.Parts[0].Text, "helpful assistant")
+}
+
+func TestBuildConfig_SetsTemperature(t *testing.T) {
+	t.Parallel()
+
+	config := gemini.BuildConfig()
+
+	require.NotNil(t, config.Temperature)
+	assert.InDelta(t, 0.4, *config.Temperature, 0.001)
+}
+
+func TestBuildUserPrompt_ContainsDocumentation(t *testing.T) {
+	t.Parallel()
+
+	docs := []*locdoc.Document{
+		{Title: "Getting Started", Content: "HTMX is a library."},
+	}
+
+	prompt := gemini.BuildUserPrompt(docs, "What is HTMX?")
+
+	assert.Contains(t, prompt, "<documentation>")
+	assert.Contains(t, prompt, "Getting Started")
+	assert.Contains(t, prompt, "HTMX is a library.")
+	assert.Contains(t, prompt, "</documentation>")
+}
+
+func TestBuildUserPrompt_ContainsQuestion(t *testing.T) {
+	t.Parallel()
+
+	docs := []*locdoc.Document{{Title: "Doc", Content: "Content"}}
+
+	prompt := gemini.BuildUserPrompt(docs, "How do I use this?")
+
+	assert.Contains(t, prompt, "Question: How do I use this?")
+}
+
+func TestBuildUserPrompt_DoesNotContainSystemInstruction(t *testing.T) {
+	t.Parallel()
+
+	docs := []*locdoc.Document{{Title: "Doc", Content: "Content"}}
+
+	prompt := gemini.BuildUserPrompt(docs, "question")
+
+	assert.NotContains(t, prompt, "You are a helpful assistant")
+}
