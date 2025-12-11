@@ -440,10 +440,15 @@ func crawlProject(
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(maxConcurrency)
 
+	// Create a logger that writes retry messages to stderr
+	logger := func(format string, args ...any) {
+		fmt.Fprintf(stderr, format+"\n", args...)
+	}
+
 	for i, url := range urls {
 		i, url := i, url // capture loop variables
 		g.Go(func() error {
-			results[i] = processURL(gctx, i, url, fetcher, extractor, converter)
+			results[i] = processURL(gctx, i, url, fetcher, extractor, converter, logger)
 			return nil // never return error to allow all goroutines to complete
 		})
 	}
@@ -519,6 +524,7 @@ func formatTokens(tokens int) string {
 }
 
 // processURL fetches and processes a single URL, returning the result.
+// It uses retry logic with exponential backoff for transient fetch failures.
 func processURL(
 	ctx context.Context,
 	position int,
@@ -526,14 +532,18 @@ func processURL(
 	fetcher locdoc.Fetcher,
 	extractor locdoc.Extractor,
 	converter locdoc.Converter,
+	logger LogFunc,
 ) crawlResult {
 	result := crawlResult{
 		position: position,
 		url:      url,
 	}
 
-	// Fetch HTML
-	html, err := fetcher.Fetch(ctx, url)
+	// Fetch HTML with retry logic for transient failures
+	fetchFn := func(ctx context.Context, url string) (string, error) {
+		return fetcher.Fetch(ctx, url)
+	}
+	html, err := FetchWithRetry(ctx, url, fetchFn, logger)
 	if err != nil {
 		result.err = err
 		result.errStage = "fetch"
