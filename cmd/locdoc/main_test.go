@@ -669,6 +669,69 @@ func TestParseAddArgs(t *testing.T) {
 		assert.Equal(t, "https://example.com/docs", opts.URL)
 		assert.True(t, opts.Force)
 	})
+
+	t.Run("defaults concurrency to 10", func(t *testing.T) {
+		t.Parallel()
+
+		opts, err := main.ParseAddArgs([]string{"myproject", "https://example.com/docs"})
+
+		require.NoError(t, err)
+		assert.Equal(t, 10, opts.Concurrency)
+	})
+
+	t.Run("parses --concurrency flag", func(t *testing.T) {
+		t.Parallel()
+
+		opts, err := main.ParseAddArgs([]string{"myproject", "https://example.com/docs", "--concurrency", "5"})
+
+		require.NoError(t, err)
+		assert.Equal(t, 5, opts.Concurrency)
+	})
+
+	t.Run("parses -c short flag", func(t *testing.T) {
+		t.Parallel()
+
+		opts, err := main.ParseAddArgs([]string{"myproject", "https://example.com/docs", "-c", "15"})
+
+		require.NoError(t, err)
+		assert.Equal(t, 15, opts.Concurrency)
+	})
+
+	t.Run("returns error for --concurrency without value", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := main.ParseAddArgs([]string{"myproject", "https://example.com/docs", "--concurrency"})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "--concurrency")
+	})
+
+	t.Run("returns error for invalid concurrency value", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := main.ParseAddArgs([]string{"myproject", "https://example.com/docs", "--concurrency", "abc"})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid")
+	})
+
+	t.Run("returns error for zero concurrency", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := main.ParseAddArgs([]string{"myproject", "https://example.com/docs", "--concurrency", "0"})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "positive")
+	})
+
+	t.Run("returns error for negative concurrency", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := main.ParseAddArgs([]string{"myproject", "https://example.com/docs", "--concurrency", "-5"})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "positive")
+	})
 }
 
 func TestCmdList(t *testing.T) {
