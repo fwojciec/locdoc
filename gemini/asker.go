@@ -42,13 +42,14 @@ func (a *Asker) Ask(ctx context.Context, projectID, question string) (string, er
 		return "", locdoc.Errorf(locdoc.ENOTFOUND, "no documents found for project %q", projectID)
 	}
 
-	prompt := buildPrompt(docs, question)
+	prompt := BuildUserPrompt(docs, question)
+	config := BuildConfig()
 
 	result, err := a.client.Models.GenerateContent(ctx, model,
 		[]*genai.Content{{
 			Parts: []*genai.Part{{Text: prompt}},
 		}},
-		nil,
+		config,
 	)
 	if err != nil {
 		return "", err
@@ -60,9 +61,22 @@ func (a *Asker) Ask(ctx context.Context, projectID, question string) (string, er
 	return result.Text(), nil
 }
 
-func buildPrompt(docs []*locdoc.Document, question string) string {
+// BuildConfig returns the GenerateContentConfig for Gemini API calls.
+func BuildConfig() *genai.GenerateContentConfig {
+	temp := float32(0.4)
+	return &genai.GenerateContentConfig{
+		SystemInstruction: &genai.Content{
+			Parts: []*genai.Part{{
+				Text: "You are a helpful assistant answering questions about software library documentation. Answer based only on the documentation provided. If the answer is not in the documentation, say so.",
+			}},
+		},
+		Temperature: &temp,
+	}
+}
+
+// BuildUserPrompt builds the user prompt containing documentation and question.
+func BuildUserPrompt(docs []*locdoc.Document, question string) string {
 	var sb strings.Builder
-	sb.WriteString("You are a helpful assistant answering questions about software library documentation.\n\n")
 	sb.WriteString("<documentation>\n")
 	for _, doc := range docs {
 		title := doc.Title
@@ -72,7 +86,6 @@ func buildPrompt(docs []*locdoc.Document, question string) string {
 		fmt.Fprintf(&sb, "## Document: %s\n%s\n\n", title, doc.Content)
 	}
 	sb.WriteString("</documentation>\n\n")
-	fmt.Fprintf(&sb, "Question: %s\n\n", question)
-	sb.WriteString("Answer based only on the documentation provided. If the answer is not in the documentation, say so.")
+	fmt.Fprintf(&sb, "Question: %s", question)
 	return sb.String()
 }
