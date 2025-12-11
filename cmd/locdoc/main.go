@@ -509,6 +509,7 @@ func crawlProject(
 		// Update progress line in place (succeeded = fetched/extracted, not yet persisted)
 		fmt.Fprintf(stdout, "\r  [%d/%d] %s (%d failed, %d succeeded)",
 			completed, total, truncateURL(result.url, 40), failed, succeeded)
+		flushWriter(stdout)
 	}
 
 	// Clear progress line and move to next line
@@ -562,6 +563,14 @@ func truncateURL(url string, maxLen int) string {
 		return url
 	}
 	return "..." + url[len(url)-maxLen+3:]
+}
+
+// flushWriter attempts to flush the writer if it supports flushing.
+// This ensures progress output is immediately visible rather than buffered.
+func flushWriter(w io.Writer) {
+	if f, ok := w.(interface{ Sync() error }); ok {
+		_ = f.Sync()
+	}
 }
 
 // formatBytes formats bytes in human-readable form.
