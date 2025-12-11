@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/fwojciec/locdoc"
 	main "github.com/fwojciec/locdoc/cmd/locdoc"
@@ -1450,10 +1451,11 @@ func TestCmdAdd_ProgressReporting(t *testing.T) {
 		}
 
 		crawlDeps := &main.CrawlDeps{
-			Documents: documentSvc,
-			Fetcher:   fetcher,
-			Extractor: extractor,
-			Converter: converter,
+			Documents:   documentSvc,
+			Fetcher:     fetcher,
+			Extractor:   extractor,
+			Converter:   converter,
+			RetryDelays: []time.Duration{}, // no retries in tests
 		}
 
 		stdout := &bytes.Buffer{}
