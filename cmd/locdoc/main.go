@@ -491,7 +491,7 @@ func crawlProject(
 
 	// Collect results and show progress
 	results := make([]crawlResult, len(urls))
-	var completed, failed, saved int
+	var completed, failed, succeeded int
 	total := len(urls)
 
 	for result := range resultCh {
@@ -503,18 +503,19 @@ func crawlProject(
 			// Print failure on its own line (persists in scroll history)
 			fmt.Fprintf(stderr, "  skip %s (%s failed): %v\n", result.url, result.errStage, result.err)
 		} else {
-			saved++
+			succeeded++
 		}
 
-		// Update progress line in place
-		fmt.Fprintf(stdout, "\r  [%d/%d] %s (%d failed, %d saved)",
-			completed, total, truncateURL(result.url, 40), failed, saved)
+		// Update progress line in place (succeeded = fetched/extracted, not yet persisted)
+		fmt.Fprintf(stdout, "\r  [%d/%d] %s (%d failed, %d succeeded)",
+			completed, total, truncateURL(result.url, 40), failed, succeeded)
 	}
 
 	// Clear progress line and move to next line
-	fmt.Fprintf(stdout, "\r%s\r", strings.Repeat(" ", 80))
+	fmt.Fprintf(stdout, "\r%s\r", strings.Repeat(" ", 120))
 
 	// Accumulate stats for summary
+	var saved int
 	var totalBytes int
 	var totalTokens int
 
@@ -534,12 +535,12 @@ func crawlProject(
 		}
 
 		if err := documents.CreateDocument(ctx, doc); err != nil {
-			fmt.Fprintf(stderr, "  error creating %s: %v\n", result.url, err)
-			saved--
+			fmt.Fprintf(stderr, "  error saving %s: %v\n", result.url, err)
 			continue
 		}
 
 		// Accumulate stats
+		saved++
 		totalBytes += len(result.markdown)
 		if tokenCounter != nil {
 			if tokens, err := tokenCounter.CountTokens(ctx, result.markdown); err == nil {
