@@ -1331,6 +1331,266 @@ func TestRun_NoArgs(t *testing.T) {
 	assert.Contains(t, stderr.String(), "usage: locdoc")
 }
 
+func TestCmdAdd_ProgressReporting(t *testing.T) {
+	t.Parallel()
+
+	t.Run("shows progress as URLs complete", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			CreateProjectFn: func(ctx context.Context, p *locdoc.Project) error {
+				p.ID = "test-id-123"
+				return nil
+			},
+		}
+
+		documentSvc := &mock.DocumentService{
+			CreateDocumentFn: func(ctx context.Context, doc *locdoc.Document) error {
+				doc.ID = "doc-" + doc.SourceURL
+				return nil
+			},
+		}
+
+		sitemapSvc := &mock.SitemapService{
+			DiscoverURLsFn: func(ctx context.Context, baseURL string, filter *locdoc.URLFilter) ([]string, error) {
+				return []string{
+					"https://example.com/docs/page1",
+					"https://example.com/docs/page2",
+					"https://example.com/docs/page3",
+				}, nil
+			},
+		}
+
+		fetcher := &mock.Fetcher{
+			FetchFn: func(ctx context.Context, url string) (string, error) {
+				return "<html><body><h1>Test</h1><p>Content</p></body></html>", nil
+			},
+			CloseFn: func() error { return nil },
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test Page", ContentHTML: "<p>Content</p>"}, nil
+			},
+		}
+
+		converter := &mock.Converter{
+			ConvertFn: func(html string) (string, error) {
+				return "# Content\n\nSome text", nil
+			},
+		}
+
+		crawlDeps := &main.CrawlDeps{
+			Documents: documentSvc,
+			Fetcher:   fetcher,
+			Extractor: extractor,
+			Converter: converter,
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs"}, stdout, stderr, projectSvc, sitemapSvc, crawlDeps)
+
+		assert.Equal(t, 0, code)
+		// Progress should include carriage return for in-place updates
+		assert.Contains(t, stdout.String(), "\r")
+		// Progress should show format like [1/3]
+		assert.Contains(t, stdout.String(), "[")
+		assert.Contains(t, stdout.String(), "/3]")
+	})
+
+	t.Run("prints failures on separate lines", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			CreateProjectFn: func(ctx context.Context, p *locdoc.Project) error {
+				p.ID = "test-id-123"
+				return nil
+			},
+		}
+
+		documentSvc := &mock.DocumentService{
+			CreateDocumentFn: func(ctx context.Context, doc *locdoc.Document) error {
+				doc.ID = "doc-" + doc.SourceURL
+				return nil
+			},
+		}
+
+		sitemapSvc := &mock.SitemapService{
+			DiscoverURLsFn: func(ctx context.Context, baseURL string, filter *locdoc.URLFilter) ([]string, error) {
+				return []string{
+					"https://example.com/docs/page1",
+					"https://example.com/docs/failing",
+					"https://example.com/docs/page3",
+				}, nil
+			},
+		}
+
+		fetcher := &mock.Fetcher{
+			FetchFn: func(ctx context.Context, url string) (string, error) {
+				if url == "https://example.com/docs/failing" {
+					return "", fmt.Errorf("connection timeout")
+				}
+				return "<html><body><h1>Test</h1><p>Content</p></body></html>", nil
+			},
+			CloseFn: func() error { return nil },
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test Page", ContentHTML: "<p>Content</p>"}, nil
+			},
+		}
+
+		converter := &mock.Converter{
+			ConvertFn: func(html string) (string, error) {
+				return "# Content\n\nSome text", nil
+			},
+		}
+
+		crawlDeps := &main.CrawlDeps{
+			Documents: documentSvc,
+			Fetcher:   fetcher,
+			Extractor: extractor,
+			Converter: converter,
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs"}, stdout, stderr, projectSvc, sitemapSvc, crawlDeps)
+
+		assert.Equal(t, 0, code)
+		// Failures should be printed to stderr with newline (not carriage return)
+		assert.Contains(t, stderr.String(), "failing")
+		assert.Contains(t, stderr.String(), "\n")
+		// Final summary should show 2 saved (not 3)
+		assert.Contains(t, stdout.String(), "Saved 2 pages")
+	})
+
+	t.Run("handles CreateDocument failure correctly", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			CreateProjectFn: func(ctx context.Context, p *locdoc.Project) error {
+				p.ID = "test-id-123"
+				return nil
+			},
+		}
+
+		documentSvc := &mock.DocumentService{
+			CreateDocumentFn: func(ctx context.Context, doc *locdoc.Document) error {
+				if doc.SourceURL == "https://example.com/docs/page2" {
+					return fmt.Errorf("database error")
+				}
+				doc.ID = "doc-" + doc.SourceURL
+				return nil
+			},
+		}
+
+		sitemapSvc := &mock.SitemapService{
+			DiscoverURLsFn: func(ctx context.Context, baseURL string, filter *locdoc.URLFilter) ([]string, error) {
+				return []string{
+					"https://example.com/docs/page1",
+					"https://example.com/docs/page2",
+					"https://example.com/docs/page3",
+				}, nil
+			},
+		}
+
+		fetcher := &mock.Fetcher{
+			FetchFn: func(ctx context.Context, url string) (string, error) {
+				return "<html><body><h1>Test</h1><p>Content</p></body></html>", nil
+			},
+			CloseFn: func() error { return nil },
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test Page", ContentHTML: "<p>Content</p>"}, nil
+			},
+		}
+
+		converter := &mock.Converter{
+			ConvertFn: func(html string) (string, error) {
+				return "# Content\n\nSome text", nil
+			},
+		}
+
+		crawlDeps := &main.CrawlDeps{
+			Documents: documentSvc,
+			Fetcher:   fetcher,
+			Extractor: extractor,
+			Converter: converter,
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs"}, stdout, stderr, projectSvc, sitemapSvc, crawlDeps)
+
+		assert.Equal(t, 0, code)
+		// Progress shows "succeeded" (fetched/extracted) not "saved"
+		assert.Contains(t, stdout.String(), "succeeded")
+		// Database error should be logged to stderr
+		assert.Contains(t, stderr.String(), "error saving")
+		assert.Contains(t, stderr.String(), "page2")
+		// Final summary should show 2 saved (page2 failed to persist)
+		assert.Contains(t, stdout.String(), "Saved 2 pages")
+	})
+
+	t.Run("handles empty URL list gracefully", func(t *testing.T) {
+		t.Parallel()
+
+		projectSvc := &mock.ProjectService{
+			CreateProjectFn: func(ctx context.Context, p *locdoc.Project) error {
+				p.ID = "test-id-123"
+				return nil
+			},
+		}
+
+		documentSvc := &mock.DocumentService{
+			CreateDocumentFn: func(ctx context.Context, doc *locdoc.Document) error {
+				t.Error("CreateDocument should not be called for empty URL list")
+				return nil
+			},
+		}
+
+		sitemapSvc := &mock.SitemapService{
+			DiscoverURLsFn: func(ctx context.Context, baseURL string, filter *locdoc.URLFilter) ([]string, error) {
+				return []string{}, nil
+			},
+		}
+
+		fetcher := &mock.Fetcher{
+			FetchFn: func(ctx context.Context, url string) (string, error) {
+				t.Error("Fetch should not be called for empty URL list")
+				return "", nil
+			},
+			CloseFn: func() error { return nil },
+		}
+
+		crawlDeps := &main.CrawlDeps{
+			Documents: documentSvc,
+			Fetcher:   fetcher,
+			Extractor: nil,
+			Converter: nil,
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		code := main.CmdAdd(testContext(), []string{"myproject", "https://example.com/docs"}, stdout, stderr, projectSvc, sitemapSvc, crawlDeps)
+
+		assert.Equal(t, 0, code)
+		assert.Contains(t, stdout.String(), "Found 0 URLs")
+		// No progress reporting or summary for empty list
+		assert.NotContains(t, stdout.String(), "Saved")
+		assert.Empty(t, stderr.String())
+	})
+}
+
 func TestRun_HelpWithoutCreatingDB(t *testing.T) {
 	t.Parallel()
 

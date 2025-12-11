@@ -453,40 +453,75 @@ func crawlProject(
 
 	fmt.Fprintf(stdout, "  Found %d URLs\n", len(urls))
 
+	if len(urls) == 0 {
+		return nil
+	}
+
 	// Fetch and process URLs concurrently with bounded concurrency
 	if concurrency <= 0 {
 		concurrency = 10 // default if not set
 	}
-	results := make([]crawlResult, len(urls))
 
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(concurrency)
+	// Channel for results as they complete
+	resultCh := make(chan crawlResult, len(urls))
 
 	// Create a logger that writes retry messages to stderr
 	logger := func(format string, args ...any) {
 		fmt.Fprintf(stderr, format+"\n", args...)
 	}
 
+	// Start workers
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(concurrency)
+
 	for i, url := range urls {
 		i, url := i, url // capture loop variables
 		g.Go(func() error {
-			results[i] = processURL(gctx, i, url, fetcher, extractor, converter, logger)
+			result := processURL(gctx, i, url, fetcher, extractor, converter, logger)
+			resultCh <- result
 			return nil // never return error to allow all goroutines to complete
 		})
 	}
 
-	// Wait for all fetches to complete
-	_ = g.Wait()
+	// Close channel when all workers done
+	go func() {
+		_ = g.Wait() // errors handled per-URL, never returned
+		close(resultCh)
+	}()
+
+	// Collect results and show progress
+	results := make([]crawlResult, len(urls))
+	var completed, failed, succeeded int
+	total := len(urls)
+
+	for result := range resultCh {
+		completed++
+		results[result.position] = result
+
+		if result.err != nil {
+			failed++
+			// Print failure on its own line (persists in scroll history)
+			fmt.Fprintf(stderr, "  skip %s (%s failed): %v\n", result.url, result.errStage, result.err)
+		} else {
+			succeeded++
+		}
+
+		// Update progress line in place (succeeded = fetched/extracted, not yet persisted)
+		fmt.Fprintf(stdout, "\r  [%d/%d] %s (%d failed, %d succeeded)",
+			completed, total, truncateURL(result.url, 40), failed, succeeded)
+	}
+
+	// Clear progress line and move to next line
+	fmt.Fprintf(stdout, "\r%s\r", strings.Repeat(" ", 120))
 
 	// Accumulate stats for summary
-	var savedCount int
+	var saved int
 	var totalBytes int
 	var totalTokens int
 
-	// Process results in order (preserving position)
+	// Save documents (in position order)
 	for _, result := range results {
 		if result.err != nil {
-			fmt.Fprintf(stderr, "  skip %s (%s failed): %v\n", result.url, result.errStage, result.err)
 			continue
 		}
 
@@ -500,12 +535,12 @@ func crawlProject(
 		}
 
 		if err := documents.CreateDocument(ctx, doc); err != nil {
-			fmt.Fprintf(stderr, "  error creating %s: %v\n", result.url, err)
+			fmt.Fprintf(stderr, "  error saving %s: %v\n", result.url, err)
 			continue
 		}
 
 		// Accumulate stats
-		savedCount++
+		saved++
 		totalBytes += len(result.markdown)
 		if tokenCounter != nil {
 			if tokens, err := tokenCounter.CountTokens(ctx, result.markdown); err == nil {
@@ -516,9 +551,17 @@ func crawlProject(
 
 	// Print summary
 	fmt.Fprintf(stdout, "  Saved %d pages (%s, %s)\n",
-		savedCount, formatBytes(totalBytes), formatTokens(totalTokens))
+		saved, formatBytes(totalBytes), formatTokens(totalTokens))
 
 	return nil
+}
+
+// truncateURL shortens a URL for display, keeping the end which is more informative.
+func truncateURL(url string, maxLen int) string {
+	if len(url) <= maxLen {
+		return url
+	}
+	return "..." + url[len(url)-maxLen+3:]
 }
 
 // formatBytes formats bytes in human-readable form.
