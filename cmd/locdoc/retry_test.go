@@ -36,10 +36,11 @@ func TestFetchWithRetry(t *testing.T) {
 	t.Run("retries on failure and succeeds", func(t *testing.T) {
 		t.Parallel()
 
+		maxAttempts := len(noDelays) + 1
 		var attempts int
 		fetcher := func(ctx context.Context, url string) (string, error) {
 			attempts++
-			if attempts < 4 {
+			if attempts < maxAttempts {
 				return "", errors.New("transient error")
 			}
 			return "<html>success</html>", nil
@@ -49,12 +50,13 @@ func TestFetchWithRetry(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, "<html>success</html>", html)
-		assert.Equal(t, 4, attempts)
+		assert.Equal(t, maxAttempts, attempts)
 	})
 
 	t.Run("returns error after max retries", func(t *testing.T) {
 		t.Parallel()
 
+		maxAttempts := len(noDelays) + 1 // 1 initial + N retries
 		var attempts int
 		fetcher := func(ctx context.Context, url string) (string, error) {
 			attempts++
@@ -65,7 +67,7 @@ func TestFetchWithRetry(t *testing.T) {
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "persistent error")
-		assert.Equal(t, 4, attempts) // 1 initial + 3 retries = 4 total attempts
+		assert.Equal(t, maxAttempts, attempts)
 	})
 
 	t.Run("respects context cancellation", func(t *testing.T) {
@@ -115,10 +117,11 @@ func TestFetchWithRetry(t *testing.T) {
 	t.Run("logs multiple retry attempts", func(t *testing.T) {
 		t.Parallel()
 
+		maxAttempts := len(noDelays) + 1
 		var attempts int
 		fetcher := func(ctx context.Context, url string) (string, error) {
 			attempts++
-			if attempts < 4 {
+			if attempts < maxAttempts {
 				return "", errors.New("transient error")
 			}
 			return "<html>success</html>", nil
@@ -133,7 +136,7 @@ func TestFetchWithRetry(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, "<html>success</html>", html)
-		assert.Len(t, logs, 3, "should log 3 retries")
+		assert.Len(t, logs, len(noDelays), "should log N retries for N delays")
 	})
 
 	t.Run("number of retries matches delay count", func(t *testing.T) {
