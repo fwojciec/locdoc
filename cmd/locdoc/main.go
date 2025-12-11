@@ -544,8 +544,8 @@ func crawlProject(
 		c, total, truncateURL(u, 40), f, s)
 	fmt.Fprintf(stdout, "\r%-80s", line)
 
-	// Clear progress line and move to next line
-	fmt.Fprintf(stdout, "\r%s\r", strings.Repeat(" ", 120))
+	// Clear progress line (overwrite with spaces, return cursor to start)
+	fmt.Fprintf(stdout, "\r%-80s\r", "")
 
 	// Accumulate stats for summary
 	var saved int
