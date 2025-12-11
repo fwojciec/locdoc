@@ -77,15 +77,20 @@ func BuildConfig() *genai.GenerateContentConfig {
 // BuildUserPrompt builds the user prompt containing documentation and question.
 func BuildUserPrompt(docs []*locdoc.Document, question string) string {
 	var sb strings.Builder
-	sb.WriteString("<documentation>\n")
-	for _, doc := range docs {
+	sb.WriteString("<documents>\n")
+	for i, doc := range docs {
 		title := doc.Title
 		if title == "" {
 			title = doc.SourceURL
 		}
-		fmt.Fprintf(&sb, "## Document: %s\n%s\n\n", title, doc.Content)
+		sb.WriteString("<document>\n")
+		fmt.Fprintf(&sb, "<index>%d</index>\n", i+1)
+		fmt.Fprintf(&sb, "<title>%s</title>\n", title)
+		fmt.Fprintf(&sb, "<source>%s</source>\n", doc.SourceURL)
+		fmt.Fprintf(&sb, "<content>%s</content>\n", doc.Content)
+		sb.WriteString("</document>\n")
 	}
-	sb.WriteString("</documentation>\n\n")
+	sb.WriteString("</documents>\n\n")
 	fmt.Fprintf(&sb, "Question: %s", question)
 	return sb.String()
 }

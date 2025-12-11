@@ -91,19 +91,51 @@ func TestBuildConfig_SetsTemperature(t *testing.T) {
 	assert.InDelta(t, 0.4, *config.Temperature, 0.001)
 }
 
-func TestBuildUserPrompt_ContainsDocumentation(t *testing.T) {
+func TestBuildUserPrompt_XMLDocumentStructure(t *testing.T) {
 	t.Parallel()
 
 	docs := []*locdoc.Document{
-		{Title: "Getting Started", Content: "HTMX is a library."},
+		{Title: "Getting Started", SourceURL: "https://htmx.org/docs/", Content: "HTMX is a library."},
 	}
 
 	prompt := gemini.BuildUserPrompt(docs, "What is HTMX?")
 
-	assert.Contains(t, prompt, "<documentation>")
-	assert.Contains(t, prompt, "Getting Started")
-	assert.Contains(t, prompt, "HTMX is a library.")
-	assert.Contains(t, prompt, "</documentation>")
+	assert.Contains(t, prompt, "<documents>")
+	assert.Contains(t, prompt, "</documents>")
+	assert.Contains(t, prompt, "<document>")
+	assert.Contains(t, prompt, "</document>")
+	assert.Contains(t, prompt, "<index>1</index>")
+	assert.Contains(t, prompt, "<title>Getting Started</title>")
+	assert.Contains(t, prompt, "<source>https://htmx.org/docs/</source>")
+	assert.Contains(t, prompt, "<content>HTMX is a library.</content>")
+}
+
+func TestBuildUserPrompt_TitleFallsBackToSourceURL(t *testing.T) {
+	t.Parallel()
+
+	docs := []*locdoc.Document{
+		{Title: "", SourceURL: "https://htmx.org/docs/", Content: "Content here."},
+	}
+
+	prompt := gemini.BuildUserPrompt(docs, "question")
+
+	assert.Contains(t, prompt, "<title>https://htmx.org/docs/</title>")
+}
+
+func TestBuildUserPrompt_MultipleDocuments(t *testing.T) {
+	t.Parallel()
+
+	docs := []*locdoc.Document{
+		{Title: "Doc One", SourceURL: "https://example.com/1", Content: "First content."},
+		{Title: "Doc Two", SourceURL: "https://example.com/2", Content: "Second content."},
+	}
+
+	prompt := gemini.BuildUserPrompt(docs, "question")
+
+	assert.Contains(t, prompt, "<index>1</index>")
+	assert.Contains(t, prompt, "<index>2</index>")
+	assert.Contains(t, prompt, "<title>Doc One</title>")
+	assert.Contains(t, prompt, "<title>Doc Two</title>")
 }
 
 func TestBuildUserPrompt_ContainsQuestion(t *testing.T) {
