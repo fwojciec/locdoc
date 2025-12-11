@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cespare/xxhash/v2"
@@ -111,6 +112,7 @@ func (m *Main) printUsage(w io.Writer) {
 	fmt.Fprintln(w, "      --filter <regex>   Filter URLs by regex (can be repeated)")
 	fmt.Fprintln(w, "      --preview          Show URLs without creating project")
 	fmt.Fprintln(w, "      --force            Delete existing project first")
+	fmt.Fprintln(w, "      -c, --concurrency N  Concurrent fetch limit (default: 10)")
 	fmt.Fprintln(w, "  list                   List all registered projects")
 	fmt.Fprintln(w, "  delete <name> --force  Delete a project and its documents")
 	fmt.Fprintln(w, "  docs <name> [--full]   List documents for a project (--full for content)")
@@ -125,17 +127,16 @@ func (m *Main) usage(w io.Writer) error {
 func (m *Main) runAdd(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	sitemapSvc := lochttp.NewSitemapService(nil)
 
-	// Check for preview mode before initializing expensive crawl dependencies
-	previewMode := false
-	for _, arg := range args {
-		if arg == "--preview" {
-			previewMode = true
-			break
-		}
+	// Parse args early to check preview mode and get concurrency before
+	// initializing expensive crawl dependencies
+	opts, err := ParseAddArgs(args)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return fmt.Errorf("add command failed")
 	}
 
 	var crawlDeps *CrawlDeps
-	if !previewMode {
+	if !opts.Preview {
 		// Wire crawl dependencies only when we'll actually crawl
 		fetcher, err := rod.NewFetcher()
 		if err != nil {
@@ -156,6 +157,7 @@ func (m *Main) runAdd(ctx context.Context, args []string, stdout, stderr io.Writ
 			Extractor:    extractor,
 			Converter:    converter,
 			TokenCounter: tokenCounter,
+			Concurrency:  opts.Concurrency,
 		}
 	}
 
@@ -234,11 +236,12 @@ func defaultDBPath() string {
 
 // AddOptions holds parsed arguments for the add command.
 type AddOptions struct {
-	Name    string
-	URL     string
-	Preview bool
-	Force   bool
-	Filters []string
+	Name        string
+	URL         string
+	Preview     bool
+	Force       bool
+	Filters     []string
+	Concurrency int
 }
 
 // CrawlDeps holds dependencies for crawling documents.
@@ -248,11 +251,14 @@ type CrawlDeps struct {
 	Extractor    locdoc.Extractor
 	Converter    locdoc.Converter
 	TokenCounter locdoc.TokenCounter
+	Concurrency  int
 }
 
 // ParseAddArgs parses command-line arguments for the add command.
 func ParseAddArgs(args []string) (*AddOptions, error) {
-	opts := &AddOptions{}
+	opts := &AddOptions{
+		Concurrency: 10, // default concurrency
+	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch arg {
@@ -266,6 +272,16 @@ func ParseAddArgs(args []string) (*AddOptions, error) {
 			}
 			i++
 			opts.Filters = append(opts.Filters, args[i])
+		case "--concurrency", "-c":
+			if i+1 >= len(args) {
+				return nil, fmt.Errorf("--concurrency requires a number argument")
+			}
+			i++
+			n, err := strconv.Atoi(args[i])
+			if err != nil {
+				return nil, fmt.Errorf("invalid concurrency value %q: must be a number", args[i])
+			}
+			opts.Concurrency = n
 		default:
 			if opts.Name == "" {
 				opts.Name = arg
@@ -355,7 +371,7 @@ func CmdAdd(ctx context.Context, args []string, stdout, stderr io.Writer, projec
 	if crawlDeps != nil && sitemaps != nil {
 		if err := crawlProject(ctx, project, stdout, stderr,
 			sitemaps, crawlDeps.Fetcher, crawlDeps.Extractor, crawlDeps.Converter,
-			crawlDeps.Documents, crawlDeps.TokenCounter); err != nil {
+			crawlDeps.Documents, crawlDeps.TokenCounter, crawlDeps.Concurrency); err != nil {
 			fmt.Fprintf(stderr, "error crawling: %v\n", err)
 			return 1
 		}
@@ -408,6 +424,7 @@ func crawlProject(
 	converter locdoc.Converter,
 	documents locdoc.DocumentService,
 	tokenCounter locdoc.TokenCounter,
+	concurrency int,
 ) error {
 	// Reconstruct URLFilter from project's stored filter patterns
 	var urlFilter *locdoc.URLFilter
@@ -434,11 +451,13 @@ func crawlProject(
 	fmt.Fprintf(stdout, "  Found %d URLs\n", len(urls))
 
 	// Fetch and process URLs concurrently with bounded concurrency
-	const maxConcurrency = 20
+	if concurrency <= 0 {
+		concurrency = 10 // default if not set
+	}
 	results := make([]crawlResult, len(urls))
 
 	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(maxConcurrency)
+	g.SetLimit(concurrency)
 
 	// Create a logger that writes retry messages to stderr
 	logger := func(format string, args ...any) {
