@@ -3,6 +3,7 @@ package rod
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/fwojciec/locdoc"
 	"github.com/go-rod/rod"
@@ -10,20 +11,35 @@ import (
 	"github.com/go-rod/rod/lib/proto"
 )
 
+// DefaultFetchTimeout is the default timeout for page navigation and loading.
+const DefaultFetchTimeout = 30 * time.Second
+
 // Ensure Fetcher implements locdoc.Fetcher at compile time.
 var _ locdoc.Fetcher = (*Fetcher)(nil)
 
 // Fetcher retrieves rendered HTML from URLs using Chrome browser automation.
 // Fetcher is safe for concurrent use by multiple goroutines.
 type Fetcher struct {
-	browser *rod.Browser
+	browser      *rod.Browser
+	fetchTimeout time.Duration
+}
+
+// Option configures a Fetcher.
+type Option func(*Fetcher)
+
+// WithFetchTimeout sets the timeout for page navigation and loading.
+// Defaults to 30 seconds if not specified.
+func WithFetchTimeout(d time.Duration) Option {
+	return func(f *Fetcher) {
+		f.fetchTimeout = d
+	}
 }
 
 // NewFetcher creates a new Fetcher that launches a headless Chrome browser.
 // Close must be called when the Fetcher is no longer needed.
 //
 // Returns an error if Chrome/Chromium cannot be found or launched.
-func NewFetcher() (*Fetcher, error) {
+func NewFetcher(opts ...Option) (*Fetcher, error) {
 	// Launch browser using rod's launcher (finds or downloads Chrome)
 	l := launcher.New().Headless(true)
 	u, err := l.Launch()
@@ -37,7 +53,15 @@ func NewFetcher() (*Fetcher, error) {
 		return nil, fmt.Errorf("connecting to browser: %w", err)
 	}
 
-	return &Fetcher{browser: browser}, nil
+	f := &Fetcher{
+		browser:      browser,
+		fetchTimeout: DefaultFetchTimeout,
+	}
+	for _, opt := range opts {
+		opt(f)
+	}
+
+	return f, nil
 }
 
 // Fetch navigates to the URL and returns the rendered HTML.
@@ -57,13 +81,13 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 	// Set context for all subsequent operations
 	page = page.Context(ctx)
 
-	// Navigate to URL
-	if err := page.Navigate(url); err != nil {
+	// Navigate to URL with explicit timeout
+	if err := page.Timeout(f.fetchTimeout).Navigate(url); err != nil {
 		return "", err
 	}
 
-	// Wait for page to load
-	if err := page.WaitLoad(); err != nil {
+	// Wait for page to load with explicit timeout
+	if err := page.Timeout(f.fetchTimeout).WaitLoad(); err != nil {
 		return "", err
 	}
 
