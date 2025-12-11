@@ -75,6 +75,7 @@ func BuildConfig() *genai.GenerateContentConfig {
 }
 
 // BuildUserPrompt builds the user prompt containing documentation and question.
+// Uses the sandwich pattern: documents -> question -> instructions.
 func BuildUserPrompt(docs []*locdoc.Document, question string) string {
 	var sb strings.Builder
 	sb.WriteString("<documents>\n")
@@ -91,6 +92,13 @@ func BuildUserPrompt(docs []*locdoc.Document, question string) string {
 		sb.WriteString("</document>\n")
 	}
 	sb.WriteString("</documents>\n\n")
-	fmt.Fprintf(&sb, "Question: %s", question)
+	fmt.Fprintf(&sb, "<question>%s</question>\n\n", question)
+	sb.WriteString(`<instructions>
+End your response with a Sources section listing the URLs you cited:
+---
+Sources:
+- url1
+- url2
+</instructions>`)
 	return sb.String()
 }
