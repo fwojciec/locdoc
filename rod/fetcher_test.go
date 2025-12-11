@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/fwojciec/locdoc"
 	"github.com/fwojciec/locdoc/rod"
@@ -68,4 +69,27 @@ document.getElementById('content').textContent = 'JavaScript Rendered';
 	require.NoError(t, err)
 	assert.Contains(t, html, "JavaScript Rendered")
 	assert.NotContains(t, html, "Loading...")
+}
+
+func TestFetcher_Fetch_TimeoutTriggersOnSlowPage(t *testing.T) {
+	t.Parallel()
+
+	// Server that delays longer than the fetch timeout
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(500 * time.Millisecond)
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><body>delayed</body></html>`))
+	}))
+	defer srv.Close()
+
+	// Use a short timeout for testing (100ms, shorter than server delay)
+	fetcher, err := rod.NewFetcher(rod.WithFetchTimeout(100 * time.Millisecond))
+	require.NoError(t, err)
+	defer fetcher.Close()
+
+	ctx := context.Background()
+	_, err = fetcher.Fetch(ctx, srv.URL)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
