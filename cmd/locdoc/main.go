@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -484,7 +485,10 @@ func crawlProject(
 
 	// Progress display goroutine - updates in place every 100ms
 	done := make(chan struct{})
+	var progressWg sync.WaitGroup
+	progressWg.Add(1)
 	go func() {
+		defer progressWg.Done()
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
 		for {
@@ -523,7 +527,8 @@ func crawlProject(
 	// Collect results
 	for result := range resultCh {
 		completed.Add(1)
-		lastURL.Store(&result.url)
+		url := result.url // copy to avoid storing pointer to loop variable
+		lastURL.Store(&url)
 		results[result.position] = result
 
 		if result.err != nil {
@@ -536,6 +541,7 @@ func crawlProject(
 	}
 
 	close(done)
+	progressWg.Wait() // ensure progress goroutine has stopped before final print
 
 	// Print final progress state before clearing (ensures at least one progress line appears)
 	c, f, s := completed.Load(), failed.Load(), succeeded.Load()
