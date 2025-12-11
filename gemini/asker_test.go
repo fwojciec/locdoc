@@ -142,7 +142,7 @@ func TestBuildUserPrompt_MultipleDocuments(t *testing.T) {
 func TestBuildUserPrompt_QuestionInXMLTags(t *testing.T) {
 	t.Parallel()
 
-	docs := []*locdoc.Document{{Title: "Doc", Content: "Content"}}
+	docs := []*locdoc.Document{{Title: "Doc", SourceURL: "https://example.com", Content: "Content"}}
 
 	prompt := gemini.BuildUserPrompt(docs, "How do I use this?")
 
@@ -152,7 +152,7 @@ func TestBuildUserPrompt_QuestionInXMLTags(t *testing.T) {
 func TestBuildUserPrompt_TrailingInstructions(t *testing.T) {
 	t.Parallel()
 
-	docs := []*locdoc.Document{{Title: "Doc", Content: "Content"}}
+	docs := []*locdoc.Document{{Title: "Doc", SourceURL: "https://example.com", Content: "Content"}}
 
 	prompt := gemini.BuildUserPrompt(docs, "question")
 
@@ -163,7 +163,7 @@ func TestBuildUserPrompt_TrailingInstructions(t *testing.T) {
 func TestBuildUserPrompt_InstructionsSpecifySourcesFormat(t *testing.T) {
 	t.Parallel()
 
-	docs := []*locdoc.Document{{Title: "Doc", Content: "Content"}}
+	docs := []*locdoc.Document{{Title: "Doc", SourceURL: "https://example.com", Content: "Content"}}
 
 	prompt := gemini.BuildUserPrompt(docs, "question")
 
@@ -174,7 +174,7 @@ func TestBuildUserPrompt_InstructionsSpecifySourcesFormat(t *testing.T) {
 func TestBuildUserPrompt_SandwichOrder(t *testing.T) {
 	t.Parallel()
 
-	docs := []*locdoc.Document{{Title: "Doc", Content: "Content"}}
+	docs := []*locdoc.Document{{Title: "Doc", SourceURL: "https://example.com", Content: "Content"}}
 
 	prompt := gemini.BuildUserPrompt(docs, "question")
 
