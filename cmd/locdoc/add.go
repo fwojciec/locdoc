@@ -78,14 +78,26 @@ func (c *AddCmd) Run(deps *Dependencies) error {
 			deps.Crawler.Concurrency = c.Concurrency
 		}
 
+		var total int
+
 		progress := func(event crawl.ProgressEvent) {
 			switch event.Type {
 			case crawl.ProgressStarted:
+				total = event.Total
 				fmt.Fprintf(deps.Stdout, "  Found %d URLs\n", event.Total)
+			case crawl.ProgressCompleted:
+				// Update progress line in place
+				fmt.Fprintf(deps.Stdout, "\r  [%d/%d] %s",
+					event.Completed, total, crawl.TruncateURL(event.URL, 40))
 			case crawl.ProgressFailed:
+				// Print failure on its own line (persists in scroll history)
 				fmt.Fprintf(deps.Stderr, "  skip %s: %v\n", event.URL, event.Error)
+				// Update progress line after failure message
+				fmt.Fprintf(deps.Stdout, "\r  [%d/%d] %s",
+					event.Completed, total, crawl.TruncateURL(event.URL, 40))
 			case crawl.ProgressFinished:
-				// Summary printed after crawl completes
+				// Clear progress line
+				fmt.Fprintf(deps.Stdout, "\r%s\r", strings.Repeat(" ", 80))
 			}
 		}
 
