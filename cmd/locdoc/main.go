@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/alecthomas/kong"
-	"github.com/cespare/xxhash/v2"
 	"github.com/fwojciec/locdoc"
 	"github.com/fwojciec/locdoc/crawl"
 	"github.com/fwojciec/locdoc/gemini"
@@ -504,7 +503,7 @@ func crawlProject(
 				c, f, s := completed.Load(), failed.Load(), succeeded.Load()
 				u := *lastURL.Load()
 				line := fmt.Sprintf("  [%d/%d] %s (%d failed, %d succeeded)",
-					c, total, truncateURL(u, 40), f, s)
+					c, total, crawl.TruncateURL(u, 40), f, s)
 				// Pad to 80 chars to overwrite previous longer lines
 				fmt.Fprintf(stdout, "\r%-80s", line)
 			case <-done:
@@ -554,7 +553,7 @@ func crawlProject(
 	c, f, s := completed.Load(), failed.Load(), succeeded.Load()
 	u := *lastURL.Load()
 	line := fmt.Sprintf("  [%d/%d] %s (%d failed, %d succeeded)",
-		c, total, truncateURL(u, 40), f, s)
+		c, total, crawl.TruncateURL(u, 40), f, s)
 	fmt.Fprintf(stdout, "\r%-80s", line)
 
 	// Clear progress line (overwrite with spaces, return cursor to start)
@@ -597,41 +596,9 @@ func crawlProject(
 
 	// Print summary
 	fmt.Fprintf(stdout, "  Saved %d pages (%s, %s)\n",
-		saved, formatBytes(totalBytes), formatTokens(totalTokens))
+		saved, crawl.FormatBytes(totalBytes), crawl.FormatTokens(totalTokens))
 
 	return nil
-}
-
-// truncateURL shortens a URL for display, keeping the end which is more informative.
-func truncateURL(url string, maxLen int) string {
-	if len(url) <= maxLen {
-		return url
-	}
-	return "..." + url[len(url)-maxLen+3:]
-}
-
-// formatBytes formats bytes in human-readable form.
-func formatBytes(bytes int) string {
-	const (
-		KB = 1024
-		MB = KB * 1024
-	)
-	switch {
-	case bytes >= MB:
-		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(MB))
-	case bytes >= KB:
-		return fmt.Sprintf("%.1f KB", float64(bytes)/float64(KB))
-	default:
-		return fmt.Sprintf("%d B", bytes)
-	}
-}
-
-// formatTokens formats token count in human-readable form.
-func formatTokens(tokens int) string {
-	if tokens < 1000 {
-		return fmt.Sprintf("~%d tokens", tokens)
-	}
-	return fmt.Sprintf("~%dk tokens", (tokens+500)/1000)
 }
 
 // processURL fetches and processes a single URL, returning the result.
@@ -684,19 +651,14 @@ func processURL(
 
 	result.title = extracted.Title
 	result.markdown = markdown
-	result.hash = computeHash(markdown)
+	result.hash = crawl.ComputeHash(markdown)
 
 	return result
 }
 
-func computeHash(content string) string {
-	h := xxhash.Sum64String(content)
-	return fmt.Sprintf("%x", h)
-}
-
 // ComputeHashForTest is exported for testing purposes only.
 func ComputeHashForTest(content string) string {
-	return computeHash(content)
+	return crawl.ComputeHash(content)
 }
 
 // CmdDocs handles the "docs" command to list documents for a project.
