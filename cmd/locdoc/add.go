@@ -29,7 +29,7 @@ func (c *AddCmd) Run(deps *Dependencies) error {
 	if c.Preview {
 		urls, err := deps.Sitemaps.DiscoverURLs(deps.Ctx, c.URL, urlFilter)
 		if err != nil {
-			fmt.Fprintf(deps.Stderr, "error: %s\n", err)
+			fmt.Fprintf(deps.Stderr, "error: %s\n", locdoc.ErrorMessage(err))
 			return err
 		}
 		for _, u := range urls {
@@ -69,6 +69,11 @@ func (c *AddCmd) Run(deps *Dependencies) error {
 
 	// Crawl documents if Crawler is provided
 	if deps.Crawler != nil {
+		// Apply user-specified concurrency
+		if c.Concurrency > 0 {
+			deps.Crawler.Concurrency = c.Concurrency
+		}
+
 		progress := func(event crawl.ProgressEvent) {
 			switch event.Type {
 			case crawl.ProgressStarted:
