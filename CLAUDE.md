@@ -15,13 +15,21 @@ Strategic guidance for LLMs working with this codebase.
 - **CLI-native** - designed for terminal workflows and easy integration with AI coding assistants
 - **Process over polish** - systematic validation results in quality rather than fixing issues post-hoc
 
-## Quality-First Development
+## Workflows
 
-**Feedback Loops**: TDD → Systematic Validation → Continuous Integration
+Use slash commands for standard development workflows:
 
-**Standard Practice**:
-```
-bd ready → Pick task → Test (should fail) → Implement → make validate → Land
+| Command | Purpose |
+|---------|---------|
+| `/start-task` | Pick a ready task, create branch, implement with TDD |
+| `/finish-task` | Validate, close beads issue, create PR |
+| `/address-pr-comments` | Fetch, evaluate, and respond to PR feedback |
+
+**Quick reference**:
+```bash
+make validate     # Quality gate - run before completing any task
+bd ready          # Show tasks with no blockers
+bd show <id>      # Show task details
 ```
 
 ## Architecture Patterns
@@ -37,47 +45,45 @@ bd ready → Pick task → Test (should fail) → Implement → make validate �
 Documentation URL → Crawler → Extractor → Markdown → Embeddings → sqlite-vec → Query → LLM → Answer
 ```
 
-## Essential Commands
+## File Structure
 
-```bash
-make validate     # Complete quality gate - run before completing any task
-make help         # Show all available targets
-bd ready          # Show tasks with no blockers
-bd list           # Show all tasks
+```
+locdoc/
+├── locdoc.go               # Main domain types file
+├── *.go                    # Other domain types and interfaces (pure, no deps)
+├── error.go                # Application error codes
+├── mock/                   # Manual mocks for testing
+├── sqlite/                 # sqlite-vec storage implementation
+├── katana/                 # Crawling implementation (wraps Katana)
+├── trafilatura/            # Content extraction (wraps go-trafilatura)
+├── ollama/                 # Embedding generation via Ollama
+├── cmd/locdoc/             # CLI entry point
+└── docs/                   # Research and workflow documentation
 ```
 
-## Beads Task Tracking
+## Skills
 
-This project uses [beads](https://github.com/steveyegge/beads) for task tracking (not GitHub Issues).
+### Task Tracking
 
-**Essential Commands**:
-```bash
-bd ready              # Show tasks with no blockers (start here)
-bd list               # Show all tasks
-bd show <id>          # Show task details
-bd create "title" --description "..."  # Create new task (ALWAYS include description)
-bd update <id> -s closed  # Mark task complete
-bd dep add <id> <blocker-id> --type blocks  # Add dependency
-```
+**`bd-issue-tracking`** - Use for all beads operations. Covers:
+- When to use bd vs TodoWrite
+- Session start protocol
+- Progress checkpointing and compaction survival
+- Issue lifecycle and dependency management
 
-**Always Include Descriptions**: Every issue must have a description following the template in "Writing Issues" below. Use `--description` flag or update immediately after creation.
+### Architecture
 
-**Task IDs**: Use `locdoc-XXXX` format (e.g., `locdoc-hw3`).
+**`go-standard-package-layout`** - Use when:
+- Creating new packages or files
+- Deciding where code belongs
+- Naming packages or files
+- Writing mocks in `mock/`
 
-**Discovering Work**:
-```bash
-bd ready --json       # Machine-readable ready tasks
-```
+### Development (invoked automatically by `/start-task`)
 
-**Branch Workflow**:
-```bash
-bd ready              # Find next task
-git checkout -b locdoc-XXXX  # Create branch named after task
-# ... work on task ...
-bd update locdoc-XXXX -s closed  # Mark complete when done
-```
-
-**Sync**: Git hooks handle syncing `.beads/` changes with your commits automatically.
+- **`superpowers:test-driven-development`** - Write test first, watch it fail, implement
+- **`superpowers:systematic-debugging`** - Understand root cause before fixing
+- **`superpowers:verification-before-completion`** - Evidence before assertions
 
 ## Writing Issues
 
@@ -101,63 +107,6 @@ Issues should be easy to complete. Include three elements:
 - Write **what** needs doing, not **how**
 - One issue = one PR
 - Reference specific files to reduce discovery time
-
-## Skills
-
-### Project-Specific
-
-**`go-standard-package-layout`** - Use when:
-- Creating new packages or files
-- Deciding where new code belongs
-- Naming packages or files
-- Tempted to create concept-named packages (e.g., `fetcher/`, `processor/`)
-- Writing new mocks or adding methods to existing mocks in `mock/`
-
-### Development Workflows (Superpowers)
-
-**`superpowers:test-driven-development`** - Use when:
-- Starting work on any issue
-- Implementing any feature or bugfix
-- Write test first, watch it fail, then implement
-
-**`superpowers:systematic-debugging`** - Use when:
-- Encountering any bug or unexpected behavior
-- Before proposing fixes - understand root cause first
-
-**`superpowers:finishing-a-development-branch`** - Use when:
-- Implementation complete and tests pass
-- Ready to create PR or merge
-
-**`superpowers:receiving-code-review`** - Use when:
-- Addressing PR feedback
-- Before implementing suggestions - verify they're technically sound
-
-**`superpowers:verification-before-completion`** - Use when:
-- About to claim work is complete
-- Before committing or creating PRs
-- Evidence before assertions
-
-## Reference Documentation
-
-- [docs/extracting-documentation-links.md](docs/extracting-documentation-links.md) - Crawling research (Katana, go-trafilatura)
-- [docs/local-rag.md](docs/local-rag.md) - RAG implementation research (sqlite-vec, embeddings)
-- `.claude/commands/` - Specialized workflows
-
-## File Structure
-
-```
-locdoc/
-├── locdoc.go               # Main domain types file
-├── *.go                    # Other domain types and interfaces (pure, no deps)
-├── error.go                # Application error codes
-├── mock/                   # Manual mocks for testing
-├── sqlite/                 # sqlite-vec storage implementation
-├── katana/                 # Crawling implementation (wraps Katana)
-├── trafilatura/            # Content extraction (wraps go-trafilatura)
-├── ollama/                 # Embedding generation via Ollama
-├── cmd/locdoc/             # CLI entry point
-└── docs/                   # Research and workflow documentation
-```
 
 ## Test Philosophy
 
@@ -193,15 +142,15 @@ func TestFoo(t *testing.T) {
 - Use `assert` for test assertions (continues on failure)
 - Use `assert.Empty(t, slice)` not `assert.Len(t, slice, 0)`
 
-**Placement**: Add tests alongside implementation. Use `mock/` package for isolating components.
-
-## Branch Naming
-
-Use beads IDs directly: `git checkout -b locdoc-hw3`
-
 ## Linting
 
 golangci-lint enforces:
 - No global state (`gochecknoglobals`) - per Ben Johnson pattern
 - Separate test packages (`testpackage`)
 - Error checking (`errcheck`) - all errors must be handled
+
+## Reference Documentation
+
+- [docs/extracting-documentation-links.md](docs/extracting-documentation-links.md) - Crawling research
+- [docs/local-rag.md](docs/local-rag.md) - RAG implementation research
+- `.claude/commands/` - Workflow commands
