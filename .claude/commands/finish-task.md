@@ -13,7 +13,7 @@ Beads uncommitted: !`git status --porcelain .beads/`
 
 ### 1. Final Validation
 
-Run `make validate` (the full validation suite).
+Run `make validate-all` (the full validation suite).
 
 If any issues arise:
 - Fix them systematically
@@ -48,12 +48,21 @@ Before creating PR, verify:
 
 ### 5. Create Pull Request
 
-**MANDATORY**: Use the `superpowers:finishing-a-development-branch` skill to guide PR creation.
+Push branch and create PR:
 
-For any branch with code changes:
-- Push the branch to origin
-- Use `gh pr create` with a clear title and description
-- Include a summary of changes and test plan in the PR body
+```bash
+git push -u origin <branch-name>
+gh pr create --title "<title>" --body "$(cat <<'EOF'
+## Summary
+<2-3 bullets of what changed>
+
+## Test Plan
+- [ ] <verification steps>
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
 
 ### 6. Final Verification
 

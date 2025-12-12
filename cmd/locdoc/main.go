@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/alecthomas/kong"
 	"github.com/cespare/xxhash/v2"
 	"github.com/fwojciec/locdoc"
 	"github.com/fwojciec/locdoc/gemini"
@@ -66,14 +67,26 @@ func (m *Main) Close() error {
 
 // Run executes the CLI with the given arguments.
 func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	if len(args) < 1 {
-		return m.usage(stderr)
+	// Create Kong parser for help and future command dispatch
+	cli := &CLI{}
+	parser, err := kong.New(cli,
+		kong.Name("locdoc"),
+		kong.Writers(stdout, stderr),
+		kong.Exit(func(int) {}), // Don't exit on help
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create parser: %w", err)
 	}
 
-	// Handle help flags before opening database
+	// Handle help flags using Kong
+	if len(args) == 0 {
+		_, _ = parser.Parse([]string{"--help"})
+		return fmt.Errorf("invalid usage")
+	}
+
 	cmd := args[0]
 	if cmd == "help" || cmd == "--help" || cmd == "-h" {
-		m.printUsage(stdout)
+		_, _ = parser.Parse([]string{"--help"})
 		return nil
 	}
 
@@ -103,28 +116,9 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return m.runAsk(ctx, cmdArgs, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "error: unknown command %q\n", cmd)
-		return m.usage(stderr)
+		_, _ = parser.Parse([]string{"--help"})
+		return fmt.Errorf("invalid usage")
 	}
-}
-
-func (m *Main) printUsage(w io.Writer) {
-	fmt.Fprintln(w, "usage: locdoc <command> [args]")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Commands:")
-	fmt.Fprintln(w, "  add <name> <url>       Add and crawl a documentation project")
-	fmt.Fprintln(w, "      --filter <regex>   Filter URLs by regex (can be repeated)")
-	fmt.Fprintln(w, "      --preview          Show URLs without creating project")
-	fmt.Fprintln(w, "      --force            Delete existing project first")
-	fmt.Fprintln(w, "      -c, --concurrency N  Concurrent fetch limit (default: 10)")
-	fmt.Fprintln(w, "  list                   List all registered projects")
-	fmt.Fprintln(w, "  delete <name> --force  Delete a project and its documents")
-	fmt.Fprintln(w, "  docs <name> [--full]   List documents for a project (--full for content)")
-	fmt.Fprintln(w, "  ask <name> \"<question>\" Ask a question about project documentation")
-}
-
-func (m *Main) usage(w io.Writer) error {
-	m.printUsage(w)
-	return fmt.Errorf("invalid usage")
 }
 
 func (m *Main) runAdd(ctx context.Context, args []string, stdout, stderr io.Writer) error {
