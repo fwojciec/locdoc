@@ -41,11 +41,6 @@ type AddCmd struct {
 	Concurrency int      `short:"c" default:"10" help:"Concurrent fetch limit"`
 }
 
-// Run executes the add command (stub for now).
-func (c *AddCmd) Run(deps *Dependencies) error {
-	return nil
-}
-
 // ListCmd is the "list" subcommand.
 type ListCmd struct{}
 
