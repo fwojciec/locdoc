@@ -44,11 +44,6 @@ type AddCmd struct {
 // ListCmd is the "list" subcommand.
 type ListCmd struct{}
 
-// Run executes the list command (stub for now).
-func (c *ListCmd) Run(deps *Dependencies) error {
-	return nil
-}
-
 // DeleteCmd is the "delete" subcommand.
 type DeleteCmd struct {
 	Name  string `arg:"" help:"Project name"`
