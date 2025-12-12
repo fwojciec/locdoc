@@ -47,10 +47,12 @@ Use the AskUserQuestion tool to let the user choose which task to work on.
 ### 4. Branch Setup
 
 Once user selects a task:
-1. Mark the task as in-progress: `bd update <task-id> -s in_progress`
-2. Commit the beads change: `git add .beads/ && git commit -m "Start work on <task-id>"`
-3. Create branch: `git checkout -b <task-id>` (e.g., `git checkout -b locdoc-abc`)
+1. Create branch first: `git checkout -b <task-id>` (e.g., `git checkout -b locdoc-abc`)
+2. Mark the task as in-progress: `bd update <task-id> -s in_progress`
+3. Commit the beads change: `git add .beads/ && git commit -m "Start work on <task-id>"`
 4. Show full task details: `bd show <task-id>`
+
+**Note**: All commits happen on the feature branch, keeping main clean.
 
 ### 5. Implementation
 
