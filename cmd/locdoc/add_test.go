@@ -123,10 +123,7 @@ func TestAddCmd_Run(t *testing.T) {
 
 		sitemaps := &mock.SitemapService{
 			DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
-				return []string{
-					"https://example.com/docs/page1",
-					"https://example.com/docs/page2",
-				}, nil
+				return []string{"https://example.com/docs/page1"}, nil
 			},
 		}
 

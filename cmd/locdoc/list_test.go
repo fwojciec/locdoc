@@ -43,6 +43,7 @@ func TestListCmd_Run(t *testing.T) {
 		err := (&main.ListCmd{}).Run(deps)
 
 		require.NoError(t, err)
+		assert.Contains(t, stdout.String(), "proj-123")
 		assert.Contains(t, stdout.String(), "react-docs")
 		assert.Contains(t, stdout.String(), "https://react.dev/docs")
 	})
