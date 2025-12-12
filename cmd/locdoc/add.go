@@ -18,7 +18,11 @@ func (c *AddCmd) Run(deps *Dependencies) error {
 		for _, pattern := range c.Filter {
 			re, err := regexp.Compile(pattern)
 			if err != nil {
-				fmt.Fprintf(deps.Stderr, "error: invalid filter pattern %q: %v\n", pattern, err)
+				fmt.Fprintf(deps.Stderr, "error: invalid regex filter pattern %q: %v\n", pattern, err)
+				fmt.Fprintln(deps.Stderr, "Filter patterns use Go regex syntax. Example patterns:")
+				fmt.Fprintln(deps.Stderr, "  /api/       - match URLs containing '/api/'")
+				fmt.Fprintln(deps.Stderr, "  ^https://   - match URLs starting with 'https://'")
+				fmt.Fprintln(deps.Stderr, "  \\.md$       - match URLs ending with '.md'")
 				return err
 			}
 			urlFilter.Include = append(urlFilter.Include, re)

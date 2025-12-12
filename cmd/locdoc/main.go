@@ -82,7 +82,7 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 	// Handle help flags using Kong
 	if len(args) == 0 {
 		_, _ = parser.Parse([]string{"--help"})
-		return fmt.Errorf("invalid usage")
+		return fmt.Errorf("no command specified. Run 'locdoc --help' to see available commands")
 	}
 
 	cmd := args[0]
@@ -100,7 +100,7 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 	// Open database
 	m.DB = sqlite.NewDB(m.DBPath)
 	if err := m.DB.Open(); err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return fmt.Errorf("failed to open database at %q: %w. Set LOCDOC_DB to use a different path", m.DBPath, err)
 	}
 	defer m.Close()
 
@@ -116,7 +116,7 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 	if cmd == "add" && !cli.Add.Preview {
 		fetcher, err := rod.NewFetcher()
 		if err != nil {
-			return fmt.Errorf("failed to start browser: %w", err)
+			return fmt.Errorf("failed to start browser: %w. Chrome or Chromium must be installed", err)
 		}
 		defer fetcher.Close()
 
@@ -140,7 +140,7 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		apiKey := os.Getenv("GEMINI_API_KEY")
 		if apiKey == "" {
 			fmt.Fprintln(stderr, "GEMINI_API_KEY environment variable not set. Get an API key at https://aistudio.google.com/apikey")
-			return fmt.Errorf("missing API key")
+			return fmt.Errorf("GEMINI_API_KEY not set. Get a key at https://aistudio.google.com/apikey")
 		}
 
 		client, err := genai.NewClient(ctx, &genai.ClientConfig{
@@ -148,7 +148,7 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 			Backend: genai.BackendGeminiAPI,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to create Gemini client: %w", err)
+			return fmt.Errorf("failed to connect to Gemini API: %w. Check your GEMINI_API_KEY", err)
 		}
 
 		deps.Asker = gemini.NewAsker(client, m.DocumentService)

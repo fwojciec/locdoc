@@ -63,9 +63,10 @@ func TestRun_NoArgs(t *testing.T) {
 
 	err := m.Run(testContext(), []string{}, stdout, stderr)
 
-	// No args should show usage to stdout and return error
+	// No args should show usage to stdout and return error with guidance
 	require.Error(t, err)
 	assert.Contains(t, stdout.String(), "Usage: locdoc")
+	assert.Contains(t, err.Error(), "locdoc", "error should mention the command name for context")
 }
 
 func TestRun_HelpWithoutCreatingDB(t *testing.T) {
@@ -89,4 +90,22 @@ func TestRun_HelpWithoutCreatingDB(t *testing.T) {
 	// Verify database file was NOT created
 	_, statErr := os.Stat(dbPath)
 	assert.True(t, os.IsNotExist(statErr), "database file should not be created for --help")
+}
+
+func TestRun_DatabaseOpenError(t *testing.T) {
+	t.Parallel()
+
+	// Use a path inside a non-existent directory to trigger an error
+	m := main.NewMain()
+	m.DBPath = "/nonexistent/path/that/cannot/exist/test.db"
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	err := m.Run(testContext(), []string{"list"}, stdout, stderr)
+
+	require.Error(t, err)
+	// Error should mention the path to help user understand what went wrong
+	assert.Contains(t, err.Error(), "database", "error should mention database")
+	assert.Contains(t, err.Error(), "LOCDOC_DB", "error should mention LOCDOC_DB environment variable")
 }
