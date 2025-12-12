@@ -1,5 +1,27 @@
 package main
 
+import (
+	"context"
+	"io"
+
+	"github.com/fwojciec/locdoc"
+	"github.com/fwojciec/locdoc/crawl"
+	"github.com/fwojciec/locdoc/sqlite"
+)
+
+// Dependencies holds all services and configuration for command execution.
+type Dependencies struct {
+	Ctx       context.Context
+	Stdout    io.Writer
+	Stderr    io.Writer
+	DB        *sqlite.DB
+	Projects  locdoc.ProjectService
+	Documents locdoc.DocumentService
+	Sitemaps  locdoc.SitemapService
+	Crawler   *crawl.Crawler
+	Asker     locdoc.Asker
+}
+
 // CLI defines the command-line interface structure for Kong.
 type CLI struct {
 	Add    AddCmd    `cmd:"" help:"Add and crawl a documentation project"`
@@ -20,7 +42,7 @@ type AddCmd struct {
 }
 
 // Run executes the add command (stub for now).
-func (c *AddCmd) Run() error {
+func (c *AddCmd) Run(deps *Dependencies) error {
 	return nil
 }
 
@@ -28,7 +50,7 @@ func (c *AddCmd) Run() error {
 type ListCmd struct{}
 
 // Run executes the list command (stub for now).
-func (c *ListCmd) Run() error {
+func (c *ListCmd) Run(deps *Dependencies) error {
 	return nil
 }
 
@@ -39,7 +61,7 @@ type DeleteCmd struct {
 }
 
 // Run executes the delete command (stub for now).
-func (c *DeleteCmd) Run() error {
+func (c *DeleteCmd) Run(deps *Dependencies) error {
 	return nil
 }
 
@@ -50,7 +72,7 @@ type DocsCmd struct {
 }
 
 // Run executes the docs command (stub for now).
-func (c *DocsCmd) Run() error {
+func (c *DocsCmd) Run(deps *Dependencies) error {
 	return nil
 }
 
@@ -61,6 +83,6 @@ type AskCmd struct {
 }
 
 // Run executes the ask command (stub for now).
-func (c *AskCmd) Run() error {
+func (c *AskCmd) Run(deps *Dependencies) error {
 	return nil
 }

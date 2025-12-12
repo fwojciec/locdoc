@@ -13,7 +13,7 @@ Beads uncommitted: !`git status --porcelain .beads/`
 
 ### 1. Final Validation
 
-Run `make validate-all` (the full validation suite).
+Run `make validate` and `make integration` (the full validation suite).
 
 If any issues arise:
 - Fix them systematically
