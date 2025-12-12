@@ -56,11 +56,6 @@ type DocsCmd struct {
 	Full bool   `help:"Show full document content"`
 }
 
-// Run executes the docs command (stub for now).
-func (c *DocsCmd) Run(deps *Dependencies) error {
-	return nil
-}
-
 // AskCmd is the "ask" subcommand.
 type AskCmd struct {
 	Name     string `arg:"" help:"Project name"`
