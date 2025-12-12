@@ -100,7 +100,8 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 	// Open database
 	m.DB = sqlite.NewDB(m.DBPath)
 	if err := m.DB.Open(); err != nil {
-		return fmt.Errorf("failed to open database at %q: %w. Set LOCDOC_DB to use a different path", m.DBPath, err)
+		fmt.Fprintf(stderr, "Hint: Set LOCDOC_DB to use a different database path\n")
+		return fmt.Errorf("failed to open database at %q: %w", m.DBPath, err)
 	}
 	defer m.Close()
 
@@ -116,7 +117,8 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 	if cmd == "add" && !cli.Add.Preview {
 		fetcher, err := rod.NewFetcher()
 		if err != nil {
-			return fmt.Errorf("failed to start browser: %w. Chrome or Chromium must be installed", err)
+			fmt.Fprintln(stderr, "Hint: Chrome or Chromium must be installed")
+			return fmt.Errorf("failed to start browser: %w", err)
 		}
 		defer fetcher.Close()
 
@@ -148,7 +150,8 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 			Backend: genai.BackendGeminiAPI,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to connect to Gemini API: %w. Check your GEMINI_API_KEY", err)
+			fmt.Fprintln(stderr, "Hint: Check your GEMINI_API_KEY is valid")
+			return fmt.Errorf("failed to connect to Gemini API: %w", err)
 		}
 
 		deps.Asker = gemini.NewAsker(client, m.DocumentService)

@@ -107,5 +107,6 @@ func TestRun_DatabaseOpenError(t *testing.T) {
 	require.Error(t, err)
 	// Error should mention the path to help user understand what went wrong
 	assert.Contains(t, err.Error(), "database", "error should mention database")
-	assert.Contains(t, err.Error(), "LOCDOC_DB", "error should mention LOCDOC_DB environment variable")
+	// Hint should be printed to stderr separately for cleaner output
+	assert.Contains(t, stderr.String(), "LOCDOC_DB", "stderr should mention LOCDOC_DB environment variable")
 }
