@@ -1307,7 +1307,7 @@ func TestRun_HelpFlag(t *testing.T) {
 
 			require.NoError(t, err)
 			// Usage should be printed to stdout (not stderr) when explicitly requested
-			assert.Contains(t, stdout.String(), "usage: locdoc")
+			assert.Contains(t, stdout.String(), "Usage: locdoc")
 			assert.Contains(t, stdout.String(), "Commands:")
 			assert.Empty(t, stderr.String())
 		})
@@ -1327,9 +1327,9 @@ func TestRun_NoArgs(t *testing.T) {
 
 	err := m.Run(testContext(), []string{}, stdout, stderr)
 
-	// No args should show usage to stderr and return error
+	// No args should show usage to stdout and return error
 	require.Error(t, err)
-	assert.Contains(t, stderr.String(), "usage: locdoc")
+	assert.Contains(t, stdout.String(), "Usage: locdoc")
 }
 
 func TestCmdAdd_ProgressReporting(t *testing.T) {
@@ -1608,7 +1608,7 @@ func TestRun_HelpWithoutCreatingDB(t *testing.T) {
 	err := m.Run(testContext(), []string{"--help"}, stdout, stderr)
 
 	require.NoError(t, err)
-	assert.Contains(t, stdout.String(), "usage: locdoc")
+	assert.Contains(t, stdout.String(), "Usage: locdoc")
 	assert.Empty(t, stderr.String())
 
 	// Verify database file was NOT created
