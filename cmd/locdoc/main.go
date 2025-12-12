@@ -6,12 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
 
 	"github.com/alecthomas/kong"
 	"github.com/fwojciec/locdoc"
@@ -22,7 +16,6 @@ import (
 	"github.com/fwojciec/locdoc/rod"
 	"github.com/fwojciec/locdoc/sqlite"
 	"github.com/fwojciec/locdoc/trafilatura"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/genai"
 )
 
@@ -98,6 +91,12 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		return nil
 	}
 
+	// Parse arguments first to know which command and its flags
+	kongCtx, err := parser.Parse(args)
+	if err != nil {
+		return err
+	}
+
 	// Open database
 	m.DB = sqlite.NewDB(m.DBPath)
 	if err := m.DB.Open(); err != nil {
@@ -105,7 +104,7 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 	}
 	defer m.Close()
 
-	// Wire services into dependencies
+	// Wire core services into dependencies
 	m.ProjectService = sqlite.NewProjectService(m.DB)
 	m.DocumentService = sqlite.NewDocumentService(m.DB)
 	deps.DB = m.DB
@@ -113,119 +112,49 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 	deps.Documents = m.DocumentService
 	deps.Sitemaps = lochttp.NewSitemapService(nil)
 
-	// Dispatch command (manual dispatch until Run methods are implemented)
-	cmdArgs := args[1:]
-	switch cmd {
-	case "add":
-		return m.runAdd(ctx, cmdArgs, stdout, stderr)
-	case "list":
-		return m.runList(ctx, stdout, stderr)
-	case "delete":
-		return m.runDelete(ctx, cmdArgs, stdout, stderr)
-	case "docs":
-		return m.runDocs(ctx, cmdArgs, stdout, stderr)
-	case "ask":
-		return m.runAsk(ctx, cmdArgs, stdout, stderr)
-	default:
-		fmt.Fprintf(stderr, "error: unknown command %q\n", cmd)
-		_, _ = parser.Parse([]string{"--help"})
-		return fmt.Errorf("invalid usage")
-	}
-}
-
-func (m *Main) runAdd(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	sitemapSvc := lochttp.NewSitemapService(nil)
-
-	// Parse args early to check preview mode and get concurrency before
-	// initializing expensive crawl dependencies
-	opts, err := ParseAddArgs(args)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return fmt.Errorf("add command failed")
-	}
-
-	var crawlDeps *CrawlDeps
-	if !opts.Preview {
-		// Wire crawl dependencies only when we'll actually crawl
+	// Wire command-specific dependencies based on command
+	if cmd == "add" && !cli.Add.Preview {
 		fetcher, err := rod.NewFetcher()
 		if err != nil {
 			return fmt.Errorf("failed to start browser: %w", err)
 		}
 		defer fetcher.Close()
-		extractor := trafilatura.NewExtractor()
-		converter := htmltomarkdown.NewConverter()
 
 		tokenCounter, err := gemini.NewTokenCounter(defaultTokenizerModel)
 		if err != nil {
 			return fmt.Errorf("failed to create token counter: %w", err)
 		}
 
-		crawlDeps = &CrawlDeps{
-			Documents:    m.DocumentService,
+		deps.Crawler = &crawl.Crawler{
+			Sitemaps:     deps.Sitemaps,
 			Fetcher:      fetcher,
-			Extractor:    extractor,
-			Converter:    converter,
+			Extractor:    trafilatura.NewExtractor(),
+			Converter:    htmltomarkdown.NewConverter(),
+			Documents:    m.DocumentService,
 			TokenCounter: tokenCounter,
-			Concurrency:  opts.Concurrency,
+			Concurrency:  cli.Add.Concurrency,
 		}
 	}
 
-	code := CmdAdd(ctx, args, stdout, stderr, m.ProjectService, sitemapSvc, crawlDeps)
-	if code != 0 {
-		return fmt.Errorf("add command failed")
-	}
-	return nil
-}
+	if cmd == "ask" {
+		apiKey := os.Getenv("GEMINI_API_KEY")
+		if apiKey == "" {
+			fmt.Fprintln(stderr, "GEMINI_API_KEY environment variable not set. Get an API key at https://aistudio.google.com/apikey")
+			return fmt.Errorf("missing API key")
+		}
 
-func (m *Main) runList(ctx context.Context, stdout, stderr io.Writer) error {
-	code := CmdList(ctx, stdout, stderr, m.ProjectService)
-	if code != 0 {
-		return fmt.Errorf("list command failed")
-	}
-	return nil
-}
+		client, err := genai.NewClient(ctx, &genai.ClientConfig{
+			APIKey:  apiKey,
+			Backend: genai.BackendGeminiAPI,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create Gemini client: %w", err)
+		}
 
-func (m *Main) runDelete(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	code := CmdDelete(ctx, args, stdout, stderr, m.ProjectService)
-	if code != 0 {
-		return fmt.Errorf("delete command failed")
-	}
-	return nil
-}
-
-func (m *Main) runDocs(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	code := CmdDocs(ctx, args, stdout, stderr, m.ProjectService, m.DocumentService)
-	if code != 0 {
-		return fmt.Errorf("docs command failed")
-	}
-	return nil
-}
-
-func (m *Main) runAsk(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	// Check for API key
-	apiKey := os.Getenv("GEMINI_API_KEY")
-	if apiKey == "" {
-		fmt.Fprintln(stderr, "GEMINI_API_KEY environment variable not set. Get an API key at https://aistudio.google.com/apikey")
-		return fmt.Errorf("missing API key")
+		deps.Asker = gemini.NewAsker(client, m.DocumentService)
 	}
 
-	// Create Gemini client
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  apiKey,
-		Backend: genai.BackendGeminiAPI,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create Gemini client: %w", err)
-	}
-
-	// Wire asker
-	asker := gemini.NewAsker(client, m.DocumentService)
-
-	code := CmdAsk(ctx, args, stdout, stderr, m.ProjectService, asker)
-	if code != 0 {
-		return fmt.Errorf("ask command failed")
-	}
-	return nil
+	return kongCtx.Run(deps)
 }
 
 const defaultTokenizerModel = "gemini-2.5-flash"
@@ -241,581 +170,4 @@ func defaultDBPath() string {
 	dir := filepath.Join(home, ".locdoc")
 	_ = os.MkdirAll(dir, 0755)
 	return filepath.Join(dir, "locdoc.db")
-}
-
-// AddOptions holds parsed arguments for the add command.
-type AddOptions struct {
-	Name        string
-	URL         string
-	Preview     bool
-	Force       bool
-	Filters     []string
-	Concurrency int
-}
-
-// CrawlDeps holds dependencies for crawling documents.
-type CrawlDeps struct {
-	Documents    locdoc.DocumentService
-	Fetcher      locdoc.Fetcher
-	Extractor    locdoc.Extractor
-	Converter    locdoc.Converter
-	TokenCounter locdoc.TokenCounter
-	Concurrency  int
-	RetryDelays  []time.Duration // if nil, uses default delays (1s, 2s, 4s)
-}
-
-// ParseAddArgs parses command-line arguments for the add command.
-func ParseAddArgs(args []string) (*AddOptions, error) {
-	opts := &AddOptions{
-		Concurrency: 10, // default concurrency
-	}
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch arg {
-		case "--preview":
-			opts.Preview = true
-		case "--force":
-			opts.Force = true
-		case "--filter":
-			if i+1 >= len(args) {
-				return nil, fmt.Errorf("--filter requires a pattern argument")
-			}
-			i++
-			opts.Filters = append(opts.Filters, args[i])
-		case "--concurrency", "-c":
-			if i+1 >= len(args) {
-				return nil, fmt.Errorf("--concurrency requires a number argument")
-			}
-			i++
-			n, err := strconv.Atoi(args[i])
-			if err != nil {
-				return nil, fmt.Errorf("invalid concurrency value %q: must be a number", args[i])
-			}
-			if n < 1 {
-				return nil, fmt.Errorf("invalid concurrency value %q: must be a positive integer", args[i])
-			}
-			opts.Concurrency = n
-		default:
-			if opts.Name == "" {
-				opts.Name = arg
-			} else if opts.URL == "" {
-				opts.URL = arg
-			} else {
-				return nil, fmt.Errorf("unexpected argument: %q\nusage: locdoc add <name> <url> [--preview] [--force] [--filter <pattern>...]", arg)
-			}
-		}
-	}
-
-	if opts.Name == "" || opts.URL == "" {
-		return nil, fmt.Errorf("usage: locdoc add <name> <url> [--preview] [--force] [--filter <pattern>...]")
-	}
-
-	return opts, nil
-}
-
-// CmdAdd handles the "add" command to register a new project and crawl it.
-func CmdAdd(ctx context.Context, args []string, stdout, stderr io.Writer, projects locdoc.ProjectService, sitemaps locdoc.SitemapService, crawlDeps *CrawlDeps) int {
-	opts, err := ParseAddArgs(args)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
-	}
-
-	// Compile filters to URLFilter (validates regex patterns early)
-	var urlFilter *locdoc.URLFilter
-	if len(opts.Filters) > 0 {
-		urlFilter = &locdoc.URLFilter{}
-		for _, pattern := range opts.Filters {
-			re, err := regexp.Compile(pattern)
-			if err != nil {
-				fmt.Fprintf(stderr, "error: invalid filter pattern %q: %v\n", pattern, err)
-				return 1
-			}
-			urlFilter.Include = append(urlFilter.Include, re)
-		}
-	}
-
-	// Preview mode: show URLs without creating project
-	if opts.Preview {
-		if sitemaps == nil {
-			fmt.Fprintln(stderr, "error: preview mode requires sitemap service")
-			return 1
-		}
-		urls, err := sitemaps.DiscoverURLs(ctx, opts.URL, urlFilter)
-		if err != nil {
-			fmt.Fprintf(stderr, "error: %s\n", err)
-			return 1
-		}
-		for _, u := range urls {
-			fmt.Fprintln(stdout, u)
-		}
-		return 0
-	}
-
-	// With --force, delete existing project first
-	if opts.Force {
-		existing, err := projects.FindProjects(ctx, locdoc.ProjectFilter{Name: &opts.Name})
-		if err != nil {
-			fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
-			return 1
-		}
-		if len(existing) > 0 {
-			if err := projects.DeleteProject(ctx, existing[0].ID); err != nil {
-				fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
-				return 1
-			}
-		}
-	}
-
-	project := &locdoc.Project{
-		Name:      opts.Name,
-		SourceURL: opts.URL,
-		Filter:    strings.Join(opts.Filters, "\n"),
-	}
-
-	if err := projects.CreateProject(ctx, project); err != nil {
-		fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
-		return 1
-	}
-
-	fmt.Fprintf(stdout, "Added project %q (%s)\n", opts.Name, project.ID)
-
-	// Crawl documents if crawl dependencies are provided
-	if crawlDeps != nil && sitemaps != nil {
-		if err := crawlProject(ctx, project, stdout, stderr,
-			sitemaps, crawlDeps.Fetcher, crawlDeps.Extractor, crawlDeps.Converter,
-			crawlDeps.Documents, crawlDeps.TokenCounter, crawlDeps.Concurrency, crawlDeps.RetryDelays); err != nil {
-			fmt.Fprintf(stderr, "error crawling: %v\n", err)
-			return 1
-		}
-	}
-
-	return 0
-}
-
-// CmdList handles the "list" command to show all registered projects.
-func CmdList(ctx context.Context, stdout, stderr io.Writer, projects locdoc.ProjectService) int {
-	list, err := projects.FindProjects(ctx, locdoc.ProjectFilter{})
-	if err != nil {
-		fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
-		return 1
-	}
-
-	if len(list) == 0 {
-		fmt.Fprintln(stdout, "No projects. Use 'locdoc add <name> <url>' to add one.")
-		return 0
-	}
-
-	for _, p := range list {
-		id := p.ID
-		if len(id) > 8 {
-			id = id[:8]
-		}
-		fmt.Fprintf(stdout, "%s  %s  %s\n", id, p.Name, p.SourceURL)
-	}
-	return 0
-}
-
-// crawlResult holds the result of fetching and processing a single URL.
-type crawlResult struct {
-	position int
-	url      string
-	title    string
-	markdown string
-	hash     string
-	err      error
-	errStage string // "fetch", "extract", or "convert"
-}
-
-func crawlProject(
-	ctx context.Context,
-	project *locdoc.Project,
-	stdout, stderr io.Writer,
-	sitemap locdoc.SitemapService,
-	fetcher locdoc.Fetcher,
-	extractor locdoc.Extractor,
-	converter locdoc.Converter,
-	documents locdoc.DocumentService,
-	tokenCounter locdoc.TokenCounter,
-	concurrency int,
-	retryDelays []time.Duration,
-) error {
-	// Reconstruct URLFilter from project's stored filter patterns
-	var urlFilter *locdoc.URLFilter
-	if project.Filter != "" {
-		urlFilter = &locdoc.URLFilter{}
-		for _, pattern := range strings.Split(project.Filter, "\n") {
-			if pattern == "" {
-				continue
-			}
-			re, err := regexp.Compile(pattern)
-			if err != nil {
-				return fmt.Errorf("invalid filter pattern %q: %w", pattern, err)
-			}
-			urlFilter.Include = append(urlFilter.Include, re)
-		}
-	}
-
-	// Discover URLs from sitemap
-	urls, err := sitemap.DiscoverURLs(ctx, project.SourceURL, urlFilter)
-	if err != nil {
-		return fmt.Errorf("sitemap discovery: %w", err)
-	}
-
-	fmt.Fprintf(stdout, "  Found %d URLs\n", len(urls))
-
-	if len(urls) == 0 {
-		return nil
-	}
-
-	// Fetch and process URLs concurrently with bounded concurrency
-	if concurrency <= 0 {
-		concurrency = 10 // default if not set
-	}
-
-	// Channel for results as they complete
-	resultCh := make(chan crawlResult, len(urls))
-
-	// Create a logger that writes retry messages to stderr
-	logger := func(format string, args ...any) {
-		fmt.Fprintf(stderr, format+"\n", args...)
-	}
-
-	// Progress tracking with atomic counters for thread safety
-	results := make([]crawlResult, len(urls))
-	var completed, failed, succeeded atomic.Int64
-	var lastURL atomic.Pointer[string]
-	emptyURL := ""
-	lastURL.Store(&emptyURL)
-	total := len(urls)
-
-	// Progress display goroutine - updates in place every 100ms
-	done := make(chan struct{})
-	var progressWg sync.WaitGroup
-	progressWg.Add(1)
-	go func() {
-		defer progressWg.Done()
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				c, f, s := completed.Load(), failed.Load(), succeeded.Load()
-				u := *lastURL.Load()
-				line := fmt.Sprintf("  [%d/%d] %s (%d failed, %d succeeded)",
-					c, total, crawl.TruncateURL(u, 40), f, s)
-				// Pad to 80 chars to overwrite previous longer lines
-				fmt.Fprintf(stdout, "\r%-80s", line)
-			case <-done:
-				return
-			}
-		}
-	}()
-
-	// Start workers in background goroutine so we can consume results immediately
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(concurrency)
-
-	go func() {
-		for i, url := range urls {
-			i, url := i, url // capture loop variables
-			g.Go(func() error {
-				result := processURL(gctx, i, url, fetcher, extractor, converter, logger, retryDelays)
-				resultCh <- result
-				return nil // never return error to allow all goroutines to complete
-			})
-		}
-		// Wait for all workers then close channel
-		_ = g.Wait()
-		close(resultCh)
-	}()
-
-	// Collect results
-	for result := range resultCh {
-		completed.Add(1)
-		url := result.url // copy to avoid storing pointer to loop variable
-		lastURL.Store(&url)
-		results[result.position] = result
-
-		if result.err != nil {
-			failed.Add(1)
-			// Print failure on its own line (persists in scroll history)
-			fmt.Fprintf(stderr, "  skip %s (%s failed): %v\n", result.url, result.errStage, result.err)
-		} else {
-			succeeded.Add(1)
-		}
-	}
-
-	close(done)
-	progressWg.Wait() // ensure progress goroutine has stopped before final print
-
-	// Print final progress state before clearing (ensures at least one progress line appears)
-	c, f, s := completed.Load(), failed.Load(), succeeded.Load()
-	u := *lastURL.Load()
-	line := fmt.Sprintf("  [%d/%d] %s (%d failed, %d succeeded)",
-		c, total, crawl.TruncateURL(u, 40), f, s)
-	fmt.Fprintf(stdout, "\r%-80s", line)
-
-	// Clear progress line (overwrite with spaces, return cursor to start)
-	fmt.Fprintf(stdout, "\r%-80s\r", "")
-
-	// Accumulate stats for summary
-	var saved int
-	var totalBytes int
-	var totalTokens int
-
-	// Save documents (in position order)
-	for _, result := range results {
-		if result.err != nil {
-			continue
-		}
-
-		doc := &locdoc.Document{
-			ProjectID:   project.ID,
-			SourceURL:   result.url,
-			Title:       result.title,
-			Content:     result.markdown,
-			ContentHash: result.hash,
-			Position:    result.position,
-		}
-
-		if err := documents.CreateDocument(ctx, doc); err != nil {
-			fmt.Fprintf(stderr, "  error saving %s: %v\n", result.url, err)
-			continue
-		}
-
-		// Accumulate stats
-		saved++
-		totalBytes += len(result.markdown)
-		if tokenCounter != nil {
-			if tokens, err := tokenCounter.CountTokens(ctx, result.markdown); err == nil {
-				totalTokens += tokens
-			}
-		}
-	}
-
-	// Print summary
-	fmt.Fprintf(stdout, "  Saved %d pages (%s, %s)\n",
-		saved, crawl.FormatBytes(totalBytes), crawl.FormatTokens(totalTokens))
-
-	return nil
-}
-
-// processURL fetches and processes a single URL, returning the result.
-// It uses retry logic with exponential backoff for transient fetch failures.
-func processURL(
-	ctx context.Context,
-	position int,
-	url string,
-	fetcher locdoc.Fetcher,
-	extractor locdoc.Extractor,
-	converter locdoc.Converter,
-	logger crawl.LogFunc,
-	retryDelays []time.Duration,
-) crawlResult {
-	result := crawlResult{
-		position: position,
-		url:      url,
-	}
-
-	// Fetch HTML with retry logic for transient failures
-	fetchFn := func(ctx context.Context, url string) (string, error) {
-		return fetcher.Fetch(ctx, url)
-	}
-	delays := retryDelays
-	if delays == nil {
-		delays = crawl.DefaultRetryDelays()
-	}
-	html, err := crawl.FetchWithRetryDelays(ctx, url, fetchFn, logger, delays)
-	if err != nil {
-		result.err = err
-		result.errStage = "fetch"
-		return result
-	}
-
-	// Extract main content
-	extracted, err := extractor.Extract(html)
-	if err != nil {
-		result.err = err
-		result.errStage = "extract"
-		return result
-	}
-
-	// Convert to markdown
-	markdown, err := converter.Convert(extracted.ContentHTML)
-	if err != nil {
-		result.err = err
-		result.errStage = "convert"
-		return result
-	}
-
-	result.title = extracted.Title
-	result.markdown = markdown
-	result.hash = crawl.ComputeHash(markdown)
-
-	return result
-}
-
-// ComputeHashForTest is exported for testing purposes only.
-func ComputeHashForTest(content string) string {
-	return crawl.ComputeHash(content)
-}
-
-// CmdDocs handles the "docs" command to list documents for a project.
-func CmdDocs(
-	ctx context.Context,
-	args []string,
-	stdout, stderr io.Writer,
-	projects locdoc.ProjectService,
-	documents locdoc.DocumentService,
-) int {
-	var name string
-	var full bool
-
-	// Parse arguments - allow --full in any position
-	for _, arg := range args {
-		if arg == "--full" {
-			full = true
-		} else if name == "" {
-			name = arg
-		}
-	}
-
-	if name == "" {
-		fmt.Fprintln(stderr, "usage: locdoc docs <name> [--full]")
-		return 1
-	}
-
-	// Find project by name
-	list, err := projects.FindProjects(ctx, locdoc.ProjectFilter{Name: &name})
-	if err != nil {
-		fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
-		return 1
-	}
-	if len(list) == 0 {
-		fmt.Fprintf(stderr, "project %q not found. Use \"locdoc list\" to see available projects.\n", name)
-		return 1
-	}
-
-	project := list[0]
-
-	// Find documents for project sorted by position
-	docs, err := documents.FindDocuments(ctx, locdoc.DocumentFilter{
-		ProjectID: &project.ID,
-		SortBy:    "position",
-	})
-	if err != nil {
-		fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
-		return 1
-	}
-
-	if len(docs) == 0 {
-		fmt.Fprintf(stderr, "project %q has no documents. To re-add, first run \"locdoc delete %s --force\", then run \"locdoc add %s <url>\".\n", name, name, name)
-		return 1
-	}
-
-	if full {
-		// Print full formatted content (same as what ask sends to LLM)
-		fmt.Fprintln(stdout, locdoc.FormatDocuments(docs))
-		return 0
-	}
-
-	// Print summary listing
-	fmt.Fprintf(stdout, "Documents for %s (%d total):\n\n", name, len(docs))
-	for i, doc := range docs {
-		title := doc.Title
-		if title == "" {
-			title = doc.SourceURL
-		}
-		fmt.Fprintf(stdout, "  %d. %s\n     %s\n", i+1, title, doc.SourceURL)
-	}
-
-	return 0
-}
-
-// CmdAsk handles the "ask" command to query project documentation.
-func CmdAsk(
-	ctx context.Context,
-	args []string,
-	stdout, stderr io.Writer,
-	projects locdoc.ProjectService,
-	asker locdoc.Asker,
-) int {
-	if len(args) < 2 {
-		fmt.Fprintln(stderr, "usage: locdoc ask <project> \"<question>\"")
-		return 1
-	}
-
-	name, question := args[0], args[1]
-
-	// Find project by name
-	list, err := projects.FindProjects(ctx, locdoc.ProjectFilter{Name: &name})
-	if err != nil {
-		fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
-		return 1
-	}
-	if len(list) == 0 {
-		fmt.Fprintf(stderr, "project %q not found. Use \"locdoc list\" to see available projects.\n", name)
-		return 1
-	}
-
-	project := list[0]
-
-	// Ask the question
-	answer, err := asker.Ask(ctx, project.ID, question)
-	if err != nil {
-		fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
-		return 1
-	}
-
-	fmt.Fprintln(stdout, answer)
-	return 0
-}
-
-// CmdDelete handles the "delete" command to remove a project.
-func CmdDelete(ctx context.Context, args []string, stdout, stderr io.Writer, projects locdoc.ProjectService) int {
-	var name string
-	var force bool
-
-	// Parse arguments - allow --force in any position
-	for _, arg := range args {
-		if arg == "--force" {
-			force = true
-		} else if name == "" {
-			name = arg
-		}
-	}
-
-	if name == "" {
-		fmt.Fprintln(stderr, "usage: locdoc delete <name> --force")
-		return 1
-	}
-
-	// Find project by name
-	list, err := projects.FindProjects(ctx, locdoc.ProjectFilter{Name: &name})
-	if err != nil {
-		fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
-		return 1
-	}
-	if len(list) == 0 {
-		fmt.Fprintf(stderr, "error: project %q not found\n", name)
-		return 1
-	}
-
-	project := list[0]
-
-	// Require --force flag
-	if !force {
-		fmt.Fprintf(stderr, "error: use --force to confirm deletion of project %q\n", name)
-		return 1
-	}
-
-	// Delete project
-	if err := projects.DeleteProject(ctx, project.ID); err != nil {
-		fmt.Fprintf(stderr, "error: %s\n", locdoc.ErrorMessage(err))
-		return 1
-	}
-
-	fmt.Fprintf(stdout, "Deleted project %q\n", name)
-	return 0
 }
