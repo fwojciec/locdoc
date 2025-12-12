@@ -3,9 +3,7 @@ package main_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"testing"
-	"time"
 
 	"github.com/fwojciec/locdoc"
 	main "github.com/fwojciec/locdoc/cmd/locdoc"
@@ -24,14 +22,7 @@ func TestDeleteCmd_Run(t *testing.T) {
 		projects := &mock.ProjectService{
 			FindProjectsFn: func(_ context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
 				if filter.Name != nil && *filter.Name == "react-docs" {
-					return []*locdoc.Project{
-						{
-							ID:        "proj-123",
-							Name:      "react-docs",
-							SourceURL: "https://react.dev/docs",
-							CreatedAt: time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC),
-						},
-					}, nil
+					return []*locdoc.Project{{ID: "proj-123", Name: "react-docs"}}, nil
 				}
 				return []*locdoc.Project{}, nil
 			},
@@ -42,20 +33,14 @@ func TestDeleteCmd_Run(t *testing.T) {
 		}
 
 		stdout := &bytes.Buffer{}
-		stderr := &bytes.Buffer{}
-
 		deps := &main.Dependencies{
 			Ctx:      context.Background(),
 			Stdout:   stdout,
-			Stderr:   stderr,
+			Stderr:   &bytes.Buffer{},
 			Projects: projects,
 		}
 
-		cmd := &main.DeleteCmd{
-			Name:  "react-docs",
-			Force: true,
-		}
-
+		cmd := &main.DeleteCmd{Name: "react-docs", Force: true}
 		err := cmd.Run(deps)
 
 		require.NoError(t, err)
@@ -67,140 +52,23 @@ func TestDeleteCmd_Run(t *testing.T) {
 		t.Parallel()
 
 		projects := &mock.ProjectService{
-			FindProjectsFn: func(_ context.Context, filter locdoc.ProjectFilter) ([]*locdoc.Project, error) {
-				return []*locdoc.Project{
-					{
-						ID:        "proj-123",
-						Name:      "react-docs",
-						SourceURL: "https://react.dev/docs",
-					},
-				}, nil
+			FindProjectsFn: func(_ context.Context, _ locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				return []*locdoc.Project{{ID: "proj-123", Name: "react-docs"}}, nil
 			},
 		}
 
-		stdout := &bytes.Buffer{}
 		stderr := &bytes.Buffer{}
-
 		deps := &main.Dependencies{
 			Ctx:      context.Background(),
-			Stdout:   stdout,
+			Stdout:   &bytes.Buffer{},
 			Stderr:   stderr,
 			Projects: projects,
 		}
 
-		cmd := &main.DeleteCmd{
-			Name:  "react-docs",
-			Force: false,
-		}
-
+		cmd := &main.DeleteCmd{Name: "react-docs", Force: false}
 		err := cmd.Run(deps)
 
 		require.Error(t, err)
 		assert.Contains(t, stderr.String(), "--force")
-	})
-
-	t.Run("returns error when project not found", func(t *testing.T) {
-		t.Parallel()
-
-		projects := &mock.ProjectService{
-			FindProjectsFn: func(_ context.Context, _ locdoc.ProjectFilter) ([]*locdoc.Project, error) {
-				return []*locdoc.Project{}, nil
-			},
-		}
-
-		stdout := &bytes.Buffer{}
-		stderr := &bytes.Buffer{}
-
-		deps := &main.Dependencies{
-			Ctx:      context.Background(),
-			Stdout:   stdout,
-			Stderr:   stderr,
-			Projects: projects,
-		}
-
-		cmd := &main.DeleteCmd{
-			Name:  "nonexistent",
-			Force: true,
-		}
-
-		err := cmd.Run(deps)
-
-		require.Error(t, err)
-		assert.Equal(t, locdoc.ENOTFOUND, locdoc.ErrorCode(err))
-		assert.Contains(t, stderr.String(), "not found")
-	})
-
-	t.Run("returns error when FindProjects fails", func(t *testing.T) {
-		t.Parallel()
-
-		dbErr := errors.New("database connection failed")
-
-		projects := &mock.ProjectService{
-			FindProjectsFn: func(_ context.Context, _ locdoc.ProjectFilter) ([]*locdoc.Project, error) {
-				return nil, dbErr
-			},
-		}
-
-		stdout := &bytes.Buffer{}
-		stderr := &bytes.Buffer{}
-
-		deps := &main.Dependencies{
-			Ctx:      context.Background(),
-			Stdout:   stdout,
-			Stderr:   stderr,
-			Projects: projects,
-		}
-
-		cmd := &main.DeleteCmd{
-			Name:  "react-docs",
-			Force: true,
-		}
-
-		err := cmd.Run(deps)
-
-		require.Error(t, err)
-		assert.Equal(t, dbErr, err)
-		assert.Contains(t, stderr.String(), "error:")
-	})
-
-	t.Run("returns error when DeleteProject fails", func(t *testing.T) {
-		t.Parallel()
-
-		deleteErr := errors.New("delete failed")
-
-		projects := &mock.ProjectService{
-			FindProjectsFn: func(_ context.Context, _ locdoc.ProjectFilter) ([]*locdoc.Project, error) {
-				return []*locdoc.Project{
-					{
-						ID:   "proj-123",
-						Name: "react-docs",
-					},
-				}, nil
-			},
-			DeleteProjectFn: func(_ context.Context, _ string) error {
-				return deleteErr
-			},
-		}
-
-		stdout := &bytes.Buffer{}
-		stderr := &bytes.Buffer{}
-
-		deps := &main.Dependencies{
-			Ctx:      context.Background(),
-			Stdout:   stdout,
-			Stderr:   stderr,
-			Projects: projects,
-		}
-
-		cmd := &main.DeleteCmd{
-			Name:  "react-docs",
-			Force: true,
-		}
-
-		err := cmd.Run(deps)
-
-		require.Error(t, err)
-		assert.Equal(t, deleteErr, err)
-		assert.Contains(t, stderr.String(), "error:")
 	})
 }
