@@ -1,6 +1,6 @@
 //go:build integration
 
-package main_test
+package crawl_test
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	main "github.com/fwojciec/locdoc/cmd/locdoc"
+	"github.com/fwojciec/locdoc/crawl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +28,7 @@ func TestFetchWithRetry_ExponentialBackoff(t *testing.T) {
 			return "<html>success</html>", nil
 		}
 
-		html, err := main.FetchWithRetry(context.Background(), "https://example.com", fetcher, nil)
+		html, err := crawl.FetchWithRetry(context.Background(), "https://example.com", fetcher, nil)
 
 		require.NoError(t, err)
 		assert.Equal(t, "<html>success</html>", html)

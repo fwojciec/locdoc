@@ -1,4 +1,4 @@
-package main
+package crawl
 
 import (
 	"context"
@@ -11,8 +11,8 @@ type FetchFunc func(ctx context.Context, url string) (string, error)
 // LogFunc is the signature for a logging function.
 type LogFunc func(format string, args ...any)
 
-// defaultRetryDelays returns the backoff delays for fetch retries: 1s, 2s, 4s.
-func defaultRetryDelays() []time.Duration {
+// DefaultRetryDelays returns the backoff delays for fetch retries: 1s, 2s, 4s.
+func DefaultRetryDelays() []time.Duration {
 	return []time.Duration{1 * time.Second, 2 * time.Second, 4 * time.Second}
 }
 
@@ -20,7 +20,7 @@ func defaultRetryDelays() []time.Duration {
 // It retries up to 3 times (4 total attempts) with delays of 1s, 2s, 4s.
 // The logger function, if provided, is called for each retry attempt.
 func FetchWithRetry(ctx context.Context, url string, fetch FetchFunc, logger LogFunc) (string, error) {
-	return FetchWithRetryDelays(ctx, url, fetch, logger, defaultRetryDelays())
+	return FetchWithRetryDelays(ctx, url, fetch, logger, DefaultRetryDelays())
 }
 
 // FetchWithRetryDelays is like FetchWithRetry but allows configurable delays.
