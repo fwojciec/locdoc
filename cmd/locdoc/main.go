@@ -16,6 +16,7 @@ import (
 	"github.com/alecthomas/kong"
 	"github.com/cespare/xxhash/v2"
 	"github.com/fwojciec/locdoc"
+	"github.com/fwojciec/locdoc/crawl"
 	"github.com/fwojciec/locdoc/gemini"
 	"github.com/fwojciec/locdoc/htmltomarkdown"
 	lochttp "github.com/fwojciec/locdoc/http"
@@ -642,7 +643,7 @@ func processURL(
 	fetcher locdoc.Fetcher,
 	extractor locdoc.Extractor,
 	converter locdoc.Converter,
-	logger LogFunc,
+	logger crawl.LogFunc,
 	retryDelays []time.Duration,
 ) crawlResult {
 	result := crawlResult{
@@ -656,9 +657,9 @@ func processURL(
 	}
 	delays := retryDelays
 	if delays == nil {
-		delays = defaultRetryDelays()
+		delays = crawl.DefaultRetryDelays()
 	}
-	html, err := FetchWithRetryDelays(ctx, url, fetchFn, logger, delays)
+	html, err := crawl.FetchWithRetryDelays(ctx, url, fetchFn, logger, delays)
 	if err != nil {
 		result.err = err
 		result.errStage = "fetch"

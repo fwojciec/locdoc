@@ -1,4 +1,4 @@
-package main_test
+package crawl_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	main "github.com/fwojciec/locdoc/cmd/locdoc"
+	"github.com/fwojciec/locdoc/crawl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +26,7 @@ func TestFetchWithRetry(t *testing.T) {
 			return "<html>content</html>", nil
 		}
 
-		html, err := main.FetchWithRetryDelays(testContext(), "https://example.com", fetcher, nil, noDelays)
+		html, err := crawl.FetchWithRetryDelays(context.Background(), "https://example.com", fetcher, nil, noDelays)
 
 		require.NoError(t, err)
 		assert.Equal(t, "<html>content</html>", html)
@@ -46,7 +46,7 @@ func TestFetchWithRetry(t *testing.T) {
 			return "<html>success</html>", nil
 		}
 
-		html, err := main.FetchWithRetryDelays(testContext(), "https://example.com", fetcher, nil, noDelays)
+		html, err := crawl.FetchWithRetryDelays(context.Background(), "https://example.com", fetcher, nil, noDelays)
 
 		require.NoError(t, err)
 		assert.Equal(t, "<html>success</html>", html)
@@ -63,7 +63,7 @@ func TestFetchWithRetry(t *testing.T) {
 			return "", errors.New("persistent error")
 		}
 
-		_, err := main.FetchWithRetryDelays(testContext(), "https://example.com", fetcher, nil, noDelays)
+		_, err := crawl.FetchWithRetryDelays(context.Background(), "https://example.com", fetcher, nil, noDelays)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "persistent error")
@@ -84,7 +84,7 @@ func TestFetchWithRetry(t *testing.T) {
 			return "", errors.New("transient error")
 		}
 
-		_, err := main.FetchWithRetryDelays(ctx, "https://example.com", fetcher, nil, noDelays)
+		_, err := crawl.FetchWithRetryDelays(ctx, "https://example.com", fetcher, nil, noDelays)
 
 		require.Error(t, err)
 		assert.True(t, errors.Is(err, context.Canceled) || attempts <= 2, "should stop on context cancellation")
@@ -107,7 +107,7 @@ func TestFetchWithRetry(t *testing.T) {
 			logs = append(logs, format)
 		}
 
-		html, err := main.FetchWithRetryDelays(testContext(), "https://example.com/page", fetcher, logger, noDelays)
+		html, err := crawl.FetchWithRetryDelays(context.Background(), "https://example.com/page", fetcher, logger, noDelays)
 
 		require.NoError(t, err)
 		assert.Equal(t, "<html>success</html>", html)
@@ -132,7 +132,7 @@ func TestFetchWithRetry(t *testing.T) {
 			logs = append(logs, format)
 		}
 
-		html, err := main.FetchWithRetryDelays(testContext(), "https://example.com/page", fetcher, logger, noDelays)
+		html, err := crawl.FetchWithRetryDelays(context.Background(), "https://example.com/page", fetcher, logger, noDelays)
 
 		require.NoError(t, err)
 		assert.Equal(t, "<html>success</html>", html)
@@ -150,9 +150,20 @@ func TestFetchWithRetry(t *testing.T) {
 
 		// With 2 delays, we should have 3 total attempts (1 + 2 retries)
 		twoDelays := []time.Duration{0, 0}
-		_, err := main.FetchWithRetryDelays(testContext(), "https://example.com", fetcher, nil, twoDelays)
+		_, err := crawl.FetchWithRetryDelays(context.Background(), "https://example.com", fetcher, nil, twoDelays)
 
 		require.Error(t, err)
 		assert.Equal(t, 3, attempts)
 	})
+}
+
+func TestDefaultRetryDelays(t *testing.T) {
+	t.Parallel()
+
+	delays := crawl.DefaultRetryDelays()
+
+	assert.Len(t, delays, 3)
+	assert.Equal(t, 1*time.Second, delays[0])
+	assert.Equal(t, 2*time.Second, delays[1])
+	assert.Equal(t, 4*time.Second, delays[2])
 }
