@@ -271,6 +271,13 @@ func ComputeHash(content string) string {
 
 // TruncateURL shortens a URL for display, keeping the end which is more informative.
 func TruncateURL(url string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
+	}
+	if maxLen < 4 {
+		// Too short for "..." prefix, just return dots
+		return url[:min(len(url), maxLen)]
+	}
 	if len(url) <= maxLen {
 		return url
 	}

@@ -175,6 +175,68 @@ func TestCrawler_CrawlProject(t *testing.T) {
 		assert.Equal(t, 1, result.Failed)
 	})
 
+	t.Run("counts failed URLs when CreateDocument fails", func(t *testing.T) {
+		t.Parallel()
+
+		createCallCount := 0
+		c := &crawl.Crawler{
+			Sitemaps: &mock.SitemapService{
+				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
+					return []string{"https://example.com/page1", "https://example.com/page2"}, nil
+				},
+			},
+			Fetcher: &mock.Fetcher{
+				FetchFn: func(_ context.Context, _ string) (string, error) {
+					return "<html><body>Content</body></html>", nil
+				},
+			},
+			Extractor: &mock.Extractor{
+				ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+					return &locdoc.ExtractResult{
+						Title:       "Page",
+						ContentHTML: "<p>Content</p>",
+					}, nil
+				},
+			},
+			Converter: &mock.Converter{
+				ConvertFn: func(_ string) (string, error) {
+					return "Content", nil
+				},
+			},
+			Documents: &mock.DocumentService{
+				CreateDocumentFn: func(_ context.Context, doc *locdoc.Document) error {
+					createCallCount++
+					// Fail on first document, succeed on second
+					if doc.SourceURL == "https://example.com/page1" {
+						return locdoc.Errorf(locdoc.EINTERNAL, "database error")
+					}
+					return nil
+				},
+			},
+			TokenCounter: &mock.TokenCounter{
+				CountTokensFn: func(_ context.Context, text string) (int, error) {
+					return len(text) / 4, nil
+				},
+			},
+			Concurrency: 1,
+			RetryDelays: []time.Duration{0},
+		}
+
+		project := &locdoc.Project{
+			ID:        "proj-123",
+			Name:      "test",
+			SourceURL: "https://example.com",
+		}
+
+		result, err := c.CrawlProject(context.Background(), project, nil)
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Equal(t, 1, result.Saved)  // Only page2 saved
+		assert.Equal(t, 1, result.Failed) // page1 failed during save
+		assert.Equal(t, 2, createCallCount)
+	})
+
 	t.Run("calls progress callback with events", func(t *testing.T) {
 		t.Parallel()
 
@@ -328,6 +390,31 @@ func TestTruncateURL(t *testing.T) {
 		t.Parallel()
 		url := "https://example.com"
 		assert.Equal(t, url, crawl.TruncateURL(url, len(url)))
+	})
+
+	t.Run("returns empty string when maxLen is zero", func(t *testing.T) {
+		t.Parallel()
+		assert.Empty(t, crawl.TruncateURL("https://example.com", 0))
+	})
+
+	t.Run("returns empty string when maxLen is negative", func(t *testing.T) {
+		t.Parallel()
+		assert.Empty(t, crawl.TruncateURL("https://example.com", -1))
+	})
+
+	t.Run("returns prefix of URL when maxLen is very small", func(t *testing.T) {
+		t.Parallel()
+		// When maxLen < 4, we can't fit "..." prefix, so return URL prefix
+		assert.Equal(t, "htt", crawl.TruncateURL("https://example.com", 3))
+		assert.Equal(t, "ht", crawl.TruncateURL("https://example.com", 2))
+		assert.Equal(t, "h", crawl.TruncateURL("https://example.com", 1))
+	})
+
+	t.Run("handles short URL with small maxLen", func(t *testing.T) {
+		t.Parallel()
+		// URL shorter than maxLen should return unchanged
+		assert.Equal(t, "ab", crawl.TruncateURL("ab", 3))
+		assert.Equal(t, "a", crawl.TruncateURL("a", 2))
 	})
 }
 
