@@ -67,12 +67,20 @@ func (m *Main) Close() error {
 
 // Run executes the CLI with the given arguments.
 func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	// Create Kong parser for help and future command dispatch
+	// Initialize dependencies struct for Kong binding
+	deps := &Dependencies{
+		Ctx:    ctx,
+		Stdout: stdout,
+		Stderr: stderr,
+	}
+
+	// Create Kong parser with dependency binding
 	cli := &CLI{}
 	parser, err := kong.New(cli,
 		kong.Name("locdoc"),
 		kong.Writers(stdout, stderr),
 		kong.Exit(func(int) {}), // Don't exit on help
+		kong.Bind(deps),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create parser: %w", err)
@@ -97,11 +105,15 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 	}
 	defer m.Close()
 
-	// Wire services
+	// Wire services into dependencies
 	m.ProjectService = sqlite.NewProjectService(m.DB)
 	m.DocumentService = sqlite.NewDocumentService(m.DB)
+	deps.DB = m.DB
+	deps.Projects = m.ProjectService
+	deps.Documents = m.DocumentService
+	deps.Sitemaps = lochttp.NewSitemapService(nil)
 
-	// Dispatch command
+	// Dispatch command (manual dispatch until Run methods are implemented)
 	cmdArgs := args[1:]
 	switch cmd {
 	case "add":
