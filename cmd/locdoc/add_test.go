@@ -150,4 +150,30 @@ func TestAddCmd_Run(t *testing.T) {
 		assert.False(t, projectCreated)
 		assert.Contains(t, stdout.String(), "https://example.com/docs/page1")
 	})
+
+	t.Run("invalid filter pattern shows helpful error", func(t *testing.T) {
+		t.Parallel()
+
+		stderr := &bytes.Buffer{}
+		deps := &main.Dependencies{
+			Ctx:    context.Background(),
+			Stdout: &bytes.Buffer{},
+			Stderr: stderr,
+		}
+
+		cmd := &main.AddCmd{
+			Name:   "testdocs",
+			URL:    "https://example.com/docs",
+			Filter: []string{"[invalid"},
+		}
+
+		err := cmd.Run(deps)
+
+		require.Error(t, err)
+		errMsg := stderr.String()
+		assert.Contains(t, errMsg, "[invalid")
+		// Error should mention regex and give an example of valid patterns
+		assert.Contains(t, errMsg, "regex")
+		assert.Contains(t, errMsg, "Example", "error should include example patterns")
+	})
 }
