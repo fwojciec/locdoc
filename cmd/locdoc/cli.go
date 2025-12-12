@@ -61,8 +61,3 @@ type AskCmd struct {
 	Name     string `arg:"" help:"Project name"`
 	Question string `arg:"" help:"Question to ask about the documentation"`
 }
-
-// Run executes the ask command (stub for now).
-func (c *AskCmd) Run(deps *Dependencies) error {
-	return nil
-}
