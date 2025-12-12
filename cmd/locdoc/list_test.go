@@ -3,6 +3,7 @@ package main_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -93,5 +94,35 @@ func TestListCmd_Run(t *testing.T) {
 
 		output := stdout.String()
 		assert.Contains(t, output, "No projects")
+	})
+
+	t.Run("returns error when FindProjects fails", func(t *testing.T) {
+		t.Parallel()
+
+		dbErr := errors.New("database connection failed")
+
+		projects := &mock.ProjectService{
+			FindProjectsFn: func(_ context.Context, _ locdoc.ProjectFilter) ([]*locdoc.Project, error) {
+				return nil, dbErr
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		deps := &main.Dependencies{
+			Ctx:      context.Background(),
+			Stdout:   stdout,
+			Stderr:   stderr,
+			Projects: projects,
+		}
+
+		cmd := &main.ListCmd{}
+
+		err := cmd.Run(deps)
+
+		require.Error(t, err)
+		assert.Equal(t, dbErr, err)
+		assert.Contains(t, stderr.String(), "error:")
 	})
 }
