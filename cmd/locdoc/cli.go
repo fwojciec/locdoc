@@ -50,11 +50,6 @@ type DeleteCmd struct {
 	Force bool   `help:"Confirm deletion"`
 }
 
-// Run executes the delete command (stub for now).
-func (c *DeleteCmd) Run(deps *Dependencies) error {
-	return nil
-}
-
 // DocsCmd is the "docs" subcommand.
 type DocsCmd struct {
 	Name string `arg:"" help:"Project name"`
