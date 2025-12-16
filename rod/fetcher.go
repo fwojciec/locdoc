@@ -21,6 +21,7 @@ var _ locdoc.Fetcher = (*Fetcher)(nil)
 // Fetcher is safe for concurrent use by multiple goroutines.
 type Fetcher struct {
 	browser      *rod.Browser
+	launcher     *launcher.Launcher
 	fetchTimeout time.Duration
 }
 
@@ -41,20 +42,21 @@ func WithFetchTimeout(d time.Duration) Option {
 // Returns an error if Chrome/Chromium cannot be found or launched.
 func NewFetcher(opts ...Option) (*Fetcher, error) {
 	// Launch browser using rod's launcher (finds or downloads Chrome)
-	l := launcher.New().Headless(true)
-	u, err := l.Launch()
+	lnchr := launcher.New().Headless(true)
+	u, err := lnchr.Launch()
 	if err != nil {
 		return nil, fmt.Errorf("launching browser: %w", err)
 	}
 
 	browser := rod.New().ControlURL(u)
 	if err := browser.Connect(); err != nil {
-		l.Kill() // Clean up launched process on connection failure
+		lnchr.Kill() // Clean up launched process on connection failure
 		return nil, fmt.Errorf("connecting to browser: %w", err)
 	}
 
 	f := &Fetcher{
 		browser:      browser,
+		launcher:     lnchr,
 		fetchTimeout: DefaultFetchTimeout,
 	}
 	for _, opt := range opts {
@@ -106,5 +108,13 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 
 // Close releases browser resources.
 func (f *Fetcher) Close() error {
-	return f.browser.Close()
+	err := f.browser.Close()
+	f.launcher.Kill()
+	return err
+}
+
+// LauncherPID returns the process ID of the browser launcher.
+// This method exists for testing purposes to verify proper cleanup.
+func (f *Fetcher) LauncherPID() int {
+	return f.launcher.PID()
 }
