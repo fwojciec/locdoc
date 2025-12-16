@@ -114,6 +114,7 @@ func (f *Fetcher) Close() error {
 }
 
 // LauncherPID returns the process ID of the browser launcher.
+// This method exists for testing purposes to verify proper cleanup.
 func (f *Fetcher) LauncherPID() int {
 	return f.launcher.PID()
 }

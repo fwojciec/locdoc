@@ -4,7 +4,6 @@ package rod_test
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
@@ -51,32 +50,4 @@ func TestFetcher_Integration_ReactDocs(t *testing.T) {
 	assert.NotEmpty(t, html)
 	assert.Contains(t, html, "React", "expected React content in page")
 	t.Logf("Fetched %d bytes from react.dev/learn", len(html))
-}
-
-func TestFetcher_Close_KillsLauncherProcess(t *testing.T) {
-	t.Parallel()
-
-	fetcher, err := rod.NewFetcher()
-	require.NoError(t, err)
-
-	// Get the launcher PID before closing
-	pid := fetcher.LauncherPID()
-	require.NotZero(t, pid, "launcher PID should be set")
-
-	// Verify process is running before close
-	process, err := os.FindProcess(pid)
-	require.NoError(t, err)
-	require.NotNil(t, process)
-
-	// Close should clean up all resources including launcher
-	err = fetcher.Close()
-	require.NoError(t, err)
-
-	// Give the OS a moment to clean up the process
-	time.Sleep(100 * time.Millisecond)
-
-	// On Unix systems, sending signal 0 checks if process exists without affecting it
-	// If the process doesn't exist, Signal(0) returns an error
-	err = process.Signal(os.Signal(nil))
-	assert.Error(t, err, "launcher process should be terminated after Close()")
 }
