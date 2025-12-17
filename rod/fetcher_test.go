@@ -93,3 +93,34 @@ func TestFetcher_Fetch_TimeoutTriggersOnSlowPage(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
+
+func TestFetcher_Close_Idempotent(t *testing.T) {
+	t.Parallel()
+
+	fetcher, err := rod.NewFetcher()
+	require.NoError(t, err)
+
+	// First close should succeed
+	err = fetcher.Close()
+	require.NoError(t, err)
+
+	// Second close should also succeed (not panic or error)
+	err = fetcher.Close()
+	require.NoError(t, err)
+}
+
+func TestFetcher_Fetch_AfterClose_ReturnsError(t *testing.T) {
+	t.Parallel()
+
+	fetcher, err := rod.NewFetcher()
+	require.NoError(t, err)
+
+	err = fetcher.Close()
+	require.NoError(t, err)
+
+	_, err = fetcher.Fetch(context.Background(), "http://example.com")
+
+	require.Error(t, err)
+	assert.Equal(t, locdoc.EINVALID, locdoc.ErrorCode(err))
+	assert.Contains(t, locdoc.ErrorMessage(err), "closed")
+}
