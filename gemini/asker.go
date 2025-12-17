@@ -9,7 +9,7 @@ import (
 	"google.golang.org/genai"
 )
 
-const model = "gemini-2.5-flash"
+const model = "gemini-3-flash-preview"
 
 // Ensure Asker implements locdoc.Asker at compile time.
 var _ locdoc.Asker = (*Asker)(nil)

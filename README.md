@@ -25,7 +25,7 @@ The interface is intentionally minimal - a few straightforward commands that any
 
 **LLM-Powered Q&A**
 - Natural language queries against stored documentation
-- Uses Gemini 2.5 Flash for fast, accurate answers
+- Uses Gemini 3 Flash for fast, accurate answers
 
 **Flexible Crawling**
 - Regex-based URL filtering to target specific sections
