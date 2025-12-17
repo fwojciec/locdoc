@@ -3,6 +3,8 @@ package rod
 import (
 	"context"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fwojciec/locdoc"
@@ -23,6 +25,9 @@ type Fetcher struct {
 	browser      *rod.Browser
 	launcher     *launcher.Launcher
 	fetchTimeout time.Duration
+	closed       atomic.Bool
+	closeOnce    sync.Once
+	closeErr     error
 }
 
 // Option configures a Fetcher.
@@ -68,6 +73,11 @@ func NewFetcher(opts ...Option) (*Fetcher, error) {
 
 // Fetch navigates to the URL and returns the rendered HTML.
 func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
+	// Check if fetcher is closed
+	if f.closed.Load() {
+		return "", locdoc.Errorf(locdoc.EINVALID, "fetcher is closed")
+	}
+
 	// Check context before starting
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -106,11 +116,14 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 	return html, nil
 }
 
-// Close releases browser resources.
+// Close releases browser resources. Close is safe to call multiple times.
 func (f *Fetcher) Close() error {
-	err := f.browser.Close()
-	f.launcher.Kill()
-	return err
+	f.closeOnce.Do(func() {
+		f.closed.Store(true)
+		f.closeErr = f.browser.Close()
+		f.launcher.Kill()
+	})
+	return f.closeErr
 }
 
 // LauncherPID returns the process ID of the browser launcher.
