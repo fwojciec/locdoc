@@ -160,7 +160,7 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 	return kongCtx.Run(deps)
 }
 
-const defaultTokenizerModel = "gemini-2.5-flash"
+const defaultTokenizerModel = "gemini-3-flash-preview"
 
 func defaultDBPath() string {
 	if path := os.Getenv("LOCDOC_DB"); path != "" {
