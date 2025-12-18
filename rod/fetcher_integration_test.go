@@ -45,8 +45,6 @@ func TestFetcher_Integration_HtmxDocs(t *testing.T) {
 	// Verify actual documentation content is present (not just placeholders)
 	assert.Contains(t, html, "hx-get", "expected htmx attribute documentation")
 	assert.Contains(t, html, "hx-post", "expected htmx attribute documentation")
-
-	t.Logf("Fetched %d bytes from htmx.org/docs/", len(html))
 }
 
 func TestFetcher_Integration_ReactDocs(t *testing.T) {
@@ -81,6 +79,52 @@ func TestFetcher_Integration_ReactDocs(t *testing.T) {
 	// Verify actual tutorial content is present (requires JS execution)
 	assert.Contains(t, html, "Creating and nesting components", "expected rendered tutorial content")
 	assert.Contains(t, html, "Writing markup with JSX", "expected rendered tutorial content")
+}
 
-	t.Logf("Fetched %d bytes from react.dev/learn", len(html))
+func TestFetcher_Integration_ConcurrentFetch(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	fetcher, err := rod.NewFetcher()
+	require.NoError(t, err)
+	defer fetcher.Close()
+
+	// Test concurrent fetches from multiple goroutines
+	const numGoroutines = 5
+	urls := []string{
+		"https://htmx.org/docs/",
+		"https://htmx.org/reference/",
+		"https://htmx.org/examples/",
+		"https://htmx.org/essays/",
+		"https://htmx.org/extensions/",
+	}
+
+	type result struct {
+		url  string
+		html string
+		err  error
+	}
+
+	results := make(chan result, numGoroutines)
+
+	// Launch concurrent fetches
+	for i := 0; i < numGoroutines; i++ {
+		go func(url string) {
+			html, err := fetcher.Fetch(ctx, url)
+			results <- result{url: url, html: html, err: err}
+		}(urls[i])
+	}
+
+	// Collect results
+	for i := 0; i < numGoroutines; i++ {
+		r := <-results
+		require.NoError(t, r.err, "fetch failed for %s", r.url)
+		assert.NotEmpty(t, r.html, "expected non-empty HTML for %s", r.url)
+
+		// Verify valid HTML structure
+		assert.Contains(t, r.html, "<html", "expected html tag for %s", r.url)
+		assert.Contains(t, r.html, "</html>", "expected closing html tag for %s", r.url)
+	}
 }
