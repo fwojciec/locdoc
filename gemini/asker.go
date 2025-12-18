@@ -9,8 +9,6 @@ import (
 	"google.golang.org/genai"
 )
 
-const model = "gemini-3-flash-preview"
-
 // Ensure Asker implements locdoc.Asker at compile time.
 var _ locdoc.Asker = (*Asker)(nil)
 
@@ -18,11 +16,12 @@ var _ locdoc.Asker = (*Asker)(nil)
 type Asker struct {
 	client *genai.Client
 	docs   locdoc.DocumentService
+	model  string
 }
 
 // NewAsker creates a new Asker.
-func NewAsker(client *genai.Client, docs locdoc.DocumentService) *Asker {
-	return &Asker{client: client, docs: docs}
+func NewAsker(client *genai.Client, docs locdoc.DocumentService, model string) *Asker {
+	return &Asker{client: client, docs: docs, model: model}
 }
 
 // Ask answers a natural language question about a project's documentation.
@@ -45,7 +44,7 @@ func (a *Asker) Ask(ctx context.Context, projectID, question string) (string, er
 	prompt := BuildUserPrompt(docs, question)
 	config := BuildConfig()
 
-	result, err := a.client.Models.GenerateContent(ctx, model,
+	result, err := a.client.Models.GenerateContent(ctx, a.model,
 		[]*genai.Content{{
 			Parts: []*genai.Part{{Text: prompt}},
 		}},

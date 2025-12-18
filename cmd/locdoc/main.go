@@ -122,7 +122,7 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		}
 		defer fetcher.Close()
 
-		tokenCounter, err := gemini.NewTokenCounter(defaultTokenizerModel)
+		tokenCounter, err := gemini.NewTokenCounter(defaultModel)
 		if err != nil {
 			return fmt.Errorf("failed to create token counter: %w", err)
 		}
@@ -154,13 +154,13 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 			return fmt.Errorf("failed to connect to Gemini API: %w", err)
 		}
 
-		deps.Asker = gemini.NewAsker(client, m.DocumentService)
+		deps.Asker = gemini.NewAsker(client, m.DocumentService, defaultModel)
 	}
 
 	return kongCtx.Run(deps)
 }
 
-const defaultTokenizerModel = "gemini-3-flash-preview"
+const defaultModel = "gemini-3-flash-preview"
 
 func defaultDBPath() string {
 	if path := os.Getenv("LOCDOC_DB"); path != "" {

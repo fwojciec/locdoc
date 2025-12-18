@@ -44,7 +44,7 @@ func TestAsker_Integration_ReturnsAnswer(t *testing.T) {
 		},
 	}
 
-	asker := gemini.NewAsker(client, docs)
+	asker := gemini.NewAsker(client, docs, "gemini-3-flash-preview")
 
 	answer, err := asker.Ask(ctx, "proj-1", "What is HTMX?")
 
