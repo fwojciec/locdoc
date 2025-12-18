@@ -21,7 +21,7 @@ func TestAsker_Ask_ReturnsErrorWhenNoDocuments(t *testing.T) {
 		},
 	}
 
-	asker := gemini.NewAsker(nil, docs) // nil client ok for this test
+	asker := gemini.NewAsker(nil, docs, "gemini-3-flash-preview")
 
 	_, err := asker.Ask(context.Background(), "proj-1", "what is this?")
 
@@ -40,7 +40,7 @@ func TestAsker_Ask_PropagatesDocumentServiceError(t *testing.T) {
 		},
 	}
 
-	asker := gemini.NewAsker(nil, docs)
+	asker := gemini.NewAsker(nil, docs, "gemini-3-flash-preview")
 
 	_, err := asker.Ask(context.Background(), "proj-1", "what is this?")
 
@@ -52,7 +52,7 @@ func TestAsker_Ask_PropagatesDocumentServiceError(t *testing.T) {
 func TestAsker_Ask_ReturnsErrorWhenProjectIDEmpty(t *testing.T) {
 	t.Parallel()
 
-	asker := gemini.NewAsker(nil, nil)
+	asker := gemini.NewAsker(nil, nil, "gemini-3-flash-preview")
 
 	_, err := asker.Ask(context.Background(), "", "what is this?")
 
@@ -64,7 +64,7 @@ func TestAsker_Ask_ReturnsErrorWhenProjectIDEmpty(t *testing.T) {
 func TestAsker_Ask_ReturnsErrorWhenQuestionEmpty(t *testing.T) {
 	t.Parallel()
 
-	asker := gemini.NewAsker(nil, nil)
+	asker := gemini.NewAsker(nil, nil, "gemini-3-flash-preview")
 
 	_, err := asker.Ask(context.Background(), "proj-1", "")
 
