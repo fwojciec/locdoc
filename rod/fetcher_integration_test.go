@@ -25,6 +25,7 @@ func TestFetcher_Integration_HtmxDocs(t *testing.T) {
 
 	html, err := fetcher.Fetch(ctx, "https://htmx.org/docs/")
 	require.NoError(t, err)
+	assert.NotEmpty(t, html, "expected non-empty HTML response")
 
 	// Verify HTML document structure
 	assert.True(t, strings.HasPrefix(strings.TrimSpace(strings.ToLower(html)), "<!doctype html>") ||
@@ -61,6 +62,7 @@ func TestFetcher_Integration_ReactDocs(t *testing.T) {
 	// React docs is heavily JS-rendered - requires JavaScript to render content
 	html, err := fetcher.Fetch(ctx, "https://react.dev/learn")
 	require.NoError(t, err)
+	assert.NotEmpty(t, html, "expected non-empty HTML response")
 
 	// Verify HTML document structure
 	assert.True(t, strings.HasPrefix(strings.TrimSpace(strings.ToLower(html)), "<!doctype html>") ||
