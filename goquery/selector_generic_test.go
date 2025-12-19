@@ -195,6 +195,36 @@ func TestGenericSelector_ExtractLinks(t *testing.T) {
 		assert.Equal(t, "toc", links[0].Source)
 	})
 
+	t.Run("does not downgrade TOC to navigation priority", func(t *testing.T) {
+		t.Parallel()
+
+		// Link appears in both TOC and nav; TOC is processed first
+		// Navigation should not downgrade the priority
+		html := `<!DOCTYPE html>
+<html>
+<head><title>Test</title></head>
+<body>
+<div class="toc">
+	<a href="/docs/guide">Guide in TOC</a>
+</div>
+<nav>
+	<a href="/docs/guide">Guide in Nav</a>
+</nav>
+</body>
+</html>`
+
+		s := goquery.NewGenericSelector()
+		links, err := s.ExtractLinks(html, "https://example.com")
+
+		require.NoError(t, err)
+		require.Len(t, links, 1)
+
+		// Should keep TOC priority (not downgraded to nav)
+		assert.Equal(t, "https://example.com/docs/guide", links[0].URL)
+		assert.Equal(t, locdoc.PriorityTOC, links[0].Priority)
+		assert.Equal(t, "toc", links[0].Source)
+	})
+
 	t.Run("filters external links", func(t *testing.T) {
 		t.Parallel()
 
