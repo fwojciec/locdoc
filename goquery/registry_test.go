@@ -177,10 +177,3 @@ func TestRegistry_List(t *testing.T) {
 		assert.Contains(t, got, locdoc.FrameworkMkDocs)
 	})
 }
-
-func TestRegistry_ImplementsInterface(t *testing.T) {
-	t.Parallel()
-
-	// Compile-time check that Registry implements LinkSelectorRegistry
-	var _ locdoc.LinkSelectorRegistry = (*goquery.Registry)(nil)
-}

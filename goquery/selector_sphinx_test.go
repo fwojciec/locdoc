@@ -9,9 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Ensure SphinxSelector implements locdoc.LinkSelector at compile time.
-var _ locdoc.LinkSelector = (*goquery.SphinxSelector)(nil)
-
 func TestSphinxSelector_Name(t *testing.T) {
 	t.Parallel()
 

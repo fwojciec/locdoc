@@ -8,6 +8,8 @@ import (
 	"github.com/fwojciec/locdoc"
 )
 
+var _ locdoc.LinkSelector = (*VuePressSelector)(nil)
+
 // VuePressSelector extracts links from VuePress and VitePress documentation sites.
 // Validated against VuePress v1.x/v2.x and VitePress v1.x.
 //

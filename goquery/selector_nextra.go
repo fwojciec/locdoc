@@ -8,6 +8,8 @@ import (
 	"github.com/fwojciec/locdoc"
 )
 
+var _ locdoc.LinkSelector = (*NextraSelector)(nil)
+
 // NextraSelector extracts links from Nextra documentation sites.
 // Validated against Nextra v2.x and v3.x.
 //

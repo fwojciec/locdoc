@@ -8,6 +8,8 @@ import (
 	"github.com/fwojciec/locdoc"
 )
 
+var _ locdoc.LinkSelector = (*SphinxSelector)(nil)
+
 // SphinxSelector extracts links from Sphinx documentation sites.
 // Validated against Sphinx v4.x-v7.x with ReadTheDocs and classic themes.
 //

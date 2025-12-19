@@ -2,6 +2,8 @@ package goquery
 
 import "github.com/fwojciec/locdoc"
 
+var _ locdoc.LinkSelectorRegistry = (*Registry)(nil)
+
 // Registry manages framework-specific link selectors and auto-detects
 // frameworks from HTML content. It uses a FrameworkDetector to identify
 // the documentation framework and returns the appropriate selector,

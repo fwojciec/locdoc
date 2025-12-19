@@ -8,6 +8,8 @@ import (
 	"github.com/fwojciec/locdoc"
 )
 
+var _ locdoc.LinkSelector = (*DocusaurusSelector)(nil)
+
 // DocusaurusSelector extracts links from Docusaurus documentation sites.
 // Validated against Docusaurus v2.x and v3.x.
 //

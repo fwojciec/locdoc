@@ -8,9 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Ensure Detector implements locdoc.FrameworkDetector at compile time.
-var _ locdoc.FrameworkDetector = (*goquery.Detector)(nil)
-
 func TestDetector_Detect(t *testing.T) {
 	t.Parallel()
 
