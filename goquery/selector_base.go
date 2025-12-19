@@ -90,7 +90,7 @@ func (s *BaseSelector) ExtractLinks(html string, baseURL string) ([]locdoc.Disco
 		})
 	}
 
-	// Extract in priority order (highest first for better deduplication)
+	// Extract from each element type; deduplication keeps highest priority
 	extractLinks("nav a[href]", locdoc.PriorityNavigation, "nav")
 	extractLinks("aside a[href]", locdoc.PriorityTOC, "sidebar")
 	extractLinks("main a[href], article a[href]", locdoc.PriorityContent, "content")

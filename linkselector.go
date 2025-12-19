@@ -17,7 +17,7 @@ type DiscoveredLink struct {
 	URL      string
 	Priority LinkPriority
 	Text     string
-	Source   string // "toc", "sidebar", "content", "footer"
+	Source   string // "nav", "sidebar", "content", "footer"
 }
 
 // Framework identifies a documentation framework.

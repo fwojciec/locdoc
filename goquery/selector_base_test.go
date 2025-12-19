@@ -182,6 +182,36 @@ func TestBaseSelector_ExtractLinks(t *testing.T) {
 		assert.Equal(t, locdoc.PriorityNavigation, links[0].Priority)
 	})
 
+	t.Run("deduplicates links updating to higher priority when found later", func(t *testing.T) {
+		t.Parallel()
+
+		// PriorityTOC (110) > PriorityNavigation (100)
+		// aside is processed after nav, so this tests the update path
+		html := `<!DOCTYPE html>
+<html>
+<head><title>Test</title></head>
+<body>
+<nav>
+	<a href="/docs/guide">Guide in Nav</a>
+</nav>
+<aside>
+	<a href="/docs/guide">Guide in Sidebar</a>
+</aside>
+</body>
+</html>`
+
+		s := goquery.NewBaseSelector()
+		links, err := s.ExtractLinks(html, "https://example.com")
+
+		require.NoError(t, err)
+		require.Len(t, links, 1)
+
+		// Should update to aside link (PriorityTOC > PriorityNavigation)
+		assert.Equal(t, "https://example.com/docs/guide", links[0].URL)
+		assert.Equal(t, locdoc.PriorityTOC, links[0].Priority)
+		assert.Equal(t, "sidebar", links[0].Source)
+	})
+
 	t.Run("returns error for invalid base URL", func(t *testing.T) {
 		t.Parallel()
 
@@ -227,7 +257,7 @@ func TestBaseSelector_ExtractLinks(t *testing.T) {
 		assert.Equal(t, "https://example.com/docs/search?q=test", links[1].URL)
 	})
 
-	t.Run("skips javascript and mailto links", func(t *testing.T) {
+	t.Run("skips non-HTTP scheme links", func(t *testing.T) {
 		t.Parallel()
 
 		html := `<!DOCTYPE html>
