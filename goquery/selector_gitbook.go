@@ -8,6 +8,8 @@ import (
 	"github.com/fwojciec/locdoc"
 )
 
+var _ locdoc.LinkSelector = (*GitBookSelector)(nil)
+
 // GitBookSelector extracts links from GitBook documentation sites.
 // Validated against GitBook's current (2024) hosted platform.
 //

@@ -14,6 +14,8 @@ import (
 	"github.com/fwojciec/locdoc"
 )
 
+var _ locdoc.LinkSelector = (*BaseSelector)(nil)
+
 // BaseSelector implements the base link extraction logic using CSS selectors.
 // It extracts links from common HTML structural elements and assigns priorities
 // based on their location in the document.

@@ -9,9 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Ensure VuePressSelector implements locdoc.LinkSelector at compile time.
-var _ locdoc.LinkSelector = (*goquery.VuePressSelector)(nil)
-
 func TestVuePressSelector_Name(t *testing.T) {
 	t.Parallel()
 

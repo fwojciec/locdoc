@@ -8,6 +8,8 @@ import (
 	"github.com/fwojciec/locdoc"
 )
 
+var _ locdoc.LinkSelector = (*GenericSelector)(nil)
+
 // GenericSelector implements link extraction using universal CSS selectors
 // that work across any documentation framework. It uses common HTML patterns
 // and class names to identify navigation, TOC, content, and footer areas.

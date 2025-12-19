@@ -8,6 +8,8 @@ import (
 	"github.com/fwojciec/locdoc"
 )
 
+var _ locdoc.LinkSelector = (*MkDocsSelector)(nil)
+
 // MkDocsSelector extracts links from MkDocs Material documentation sites.
 // Validated against MkDocs Material v8.x and v9.x.
 //

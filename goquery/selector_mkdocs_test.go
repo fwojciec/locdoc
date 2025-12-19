@@ -9,9 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Ensure MkDocsSelector implements locdoc.LinkSelector at compile time.
-var _ locdoc.LinkSelector = (*goquery.MkDocsSelector)(nil)
-
 func TestMkDocsSelector_Name(t *testing.T) {
 	t.Parallel()
 

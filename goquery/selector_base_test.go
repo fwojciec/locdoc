@@ -9,9 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Ensure BaseSelector implements locdoc.LinkSelector at compile time.
-var _ locdoc.LinkSelector = (*goquery.BaseSelector)(nil)
-
 func TestBaseSelector_Name(t *testing.T) {
 	t.Parallel()
 

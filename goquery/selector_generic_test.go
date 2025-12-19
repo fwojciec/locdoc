@@ -9,9 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Ensure GenericSelector implements locdoc.LinkSelector at compile time.
-var _ locdoc.LinkSelector = (*goquery.GenericSelector)(nil)
-
 func TestGenericSelector_Name(t *testing.T) {
 	t.Parallel()
 
