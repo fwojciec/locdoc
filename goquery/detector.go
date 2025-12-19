@@ -36,7 +36,7 @@ func (d *Detector) Detect(html string) locdoc.Framework {
 	// __docusaurus_skipToContent_fallback is highly specific
 	if d.hasSelector(doc, "#__docusaurus_skipToContent_fallback") ||
 		d.hasSelector(doc, ".theme-doc-sidebar-container") ||
-		d.hasSelector(doc, "[data-rh]") && d.hasSelector(doc, "[data-theme]") {
+		(d.hasSelector(doc, "[data-rh]") && d.hasSelector(doc, "[data-theme]")) {
 		return locdoc.FrameworkDocusaurus
 	}
 
@@ -91,16 +91,11 @@ func (d *Detector) Detect(html string) locdoc.Framework {
 
 // detectFromMetaGenerator checks the meta generator tag for framework identification.
 func (d *Detector) detectFromMetaGenerator(doc *goquery.Document) locdoc.Framework {
-	generator := ""
-	doc.Find("meta[name='generator']").Each(func(_ int, s *goquery.Selection) {
-		if content, exists := s.Attr("content"); exists {
-			generator = strings.ToLower(content)
-		}
-	})
-
-	if generator == "" {
+	content, exists := doc.Find("meta[name='generator']").First().Attr("content")
+	if !exists || content == "" {
 		return locdoc.FrameworkUnknown
 	}
+	generator := strings.ToLower(content)
 
 	switch {
 	case strings.Contains(generator, "sphinx"):
@@ -130,33 +125,20 @@ func (d *Detector) hasSelector(doc *goquery.Document, selector string) bool {
 // hasGitBookClasses checks for GitBook-specific classes on the html element.
 // GitBook uses a combination of: circular-corners, theme-clean, tint
 func (d *Detector) hasGitBookClasses(doc *goquery.Document) bool {
-	htmlClass := ""
-	doc.Find("html").Each(func(_ int, s *goquery.Selection) {
-		if class, exists := s.Attr("class"); exists {
-			htmlClass = class
-		}
-	})
+	html := doc.Find("html").First()
 
-	if htmlClass == "" {
-		return false
+	// Use HasClass for exact class matching (avoids false positives from partial matches)
+	count := 0
+	if html.HasClass("circular-corners") {
+		count++
 	}
-
-	// GitBook has a distinctive combination of classes
-	hasCircularCorners := strings.Contains(htmlClass, "circular-corners")
-	hasThemeClean := strings.Contains(htmlClass, "theme-clean")
-	hasTint := strings.Contains(htmlClass, "tint")
+	if html.HasClass("theme-clean") {
+		count++
+	}
+	if html.HasClass("tint") {
+		count++
+	}
 
 	// Require at least two of these GitBook-specific classes
-	count := 0
-	if hasCircularCorners {
-		count++
-	}
-	if hasThemeClean {
-		count++
-	}
-	if hasTint {
-		count++
-	}
-
 	return count >= 2
 }
