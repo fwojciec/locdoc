@@ -8,8 +8,8 @@ type URLFrontier interface {
 	// Returns false if the URL has already been seen.
 	Push(link DiscoveredLink) bool
 
-	// Pop returns the next URL by priority.
-	// Returns false if the frontier is empty.
+	// Pop returns the next link by priority.
+	// The bool result is false if the frontier is empty.
 	Pop() (DiscoveredLink, bool)
 
 	// Len returns the number of URLs in the queue.
