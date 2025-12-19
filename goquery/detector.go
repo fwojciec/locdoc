@@ -10,6 +10,8 @@ import (
 // Detector identifies documentation frameworks from HTML content.
 // It checks for framework-specific CSS classes, data attributes, meta tags,
 // and structural markers that are unique to each documentation generator.
+//
+// Detector is stateless and safe for concurrent use.
 type Detector struct{}
 
 // NewDetector creates a new Detector.

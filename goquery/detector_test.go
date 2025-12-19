@@ -344,6 +344,54 @@ func TestDetector_Detect(t *testing.T) {
 		assert.Equal(t, locdoc.FrameworkNextra, framework)
 	})
 
+	// Priority order tests
+	t.Run("meta generator takes priority over CSS class markers", func(t *testing.T) {
+		t.Parallel()
+
+		// HTML with Sphinx meta generator AND Docusaurus CSS classes
+		// Should return Sphinx because meta generator is checked first
+		html := `<!DOCTYPE html>
+<html>
+<head>
+	<title>Conflicting Markers</title>
+	<meta name="generator" content="Sphinx 7.2.6">
+</head>
+<body>
+<div class="theme-doc-sidebar-container">
+	<nav class="menu"><ul><li><a href="/docs">Docs</a></li></ul></nav>
+</div>
+</body>
+</html>`
+
+		d := goquery.NewDetector()
+		framework := d.Detect(html)
+
+		assert.Equal(t, locdoc.FrameworkSphinx, framework)
+	})
+
+	t.Run("meta generator takes priority over multiple framework markers", func(t *testing.T) {
+		t.Parallel()
+
+		// HTML with GitBook meta generator AND MkDocs AND Nextra CSS classes
+		html := `<!DOCTYPE html>
+<html>
+<head>
+	<title>Multiple Conflicting Markers</title>
+	<meta name="generator" content="GitBook">
+</head>
+<body data-md-color-scheme="default">
+<nav class="nextra-navbar">
+	<ul><li><a href="/docs">Docs</a></li></ul>
+</nav>
+</body>
+</html>`
+
+		d := goquery.NewDetector()
+		framework := d.Detect(html)
+
+		assert.Equal(t, locdoc.FrameworkGitBook, framework)
+	})
+
 	// Edge cases
 	t.Run("returns FrameworkUnknown for generic HTML", func(t *testing.T) {
 		t.Parallel()
