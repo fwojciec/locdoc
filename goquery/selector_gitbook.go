@@ -9,6 +9,8 @@ import (
 )
 
 // GitBookSelector extracts links from GitBook documentation sites.
+// Validated against GitBook's current (2024) hosted platform.
+//
 // It targets GitBook-specific navigation elements:
 // - [data-testid="space.sidebar"] for the main navigation
 // - [data-testid="page.desktopTableOfContents"] for on-page TOC

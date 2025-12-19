@@ -9,6 +9,8 @@ import (
 )
 
 // DocusaurusSelector extracts links from Docusaurus documentation sites.
+// Validated against Docusaurus v2.x and v3.x.
+//
 // It targets Docusaurus-specific navigation elements:
 // - .theme-doc-sidebar-container for the docs sidebar
 // - .table-of-contents for on-page TOC

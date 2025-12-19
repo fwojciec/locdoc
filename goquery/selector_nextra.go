@@ -9,6 +9,8 @@ import (
 )
 
 // NextraSelector extracts links from Nextra documentation sites.
+// Validated against Nextra v2.x and v3.x.
+//
 // It targets Nextra-specific navigation elements:
 // - .nextra-sidebar for the main navigation
 // - .nextra-toc for on-page TOC

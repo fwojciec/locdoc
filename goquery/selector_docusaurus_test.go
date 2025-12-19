@@ -173,6 +173,41 @@ func TestDocusaurusSelector_ExtractLinks(t *testing.T) {
 		assert.Equal(t, locdoc.PriorityNavigation, links[0].Priority)
 	})
 
+	t.Run("deduplicates across three priority levels keeping highest", func(t *testing.T) {
+		t.Parallel()
+
+		// Same link appears in TOC (110), sidebar (100), and content (50)
+		// Should keep TOC priority as it's highest
+		html := `<!DOCTYPE html>
+<html>
+<head><title>Docusaurus</title></head>
+<body>
+<div class="theme-doc-sidebar-container">
+	<nav class="menu">
+		<ul><li><a href="/docs/intro">Intro in Sidebar</a></li></ul>
+	</nav>
+</div>
+<aside class="col col--3">
+	<div class="table-of-contents">
+		<ul><li><a href="/docs/intro">Intro in TOC</a></li></ul>
+	</div>
+</aside>
+<article>
+	<p>See <a href="/docs/intro">the introduction</a> in content.</p>
+</article>
+</body>
+</html>`
+
+		s := goquery.NewDocusaurusSelector()
+		links, err := s.ExtractLinks(html, "https://example.com")
+
+		require.NoError(t, err)
+		require.Len(t, links, 1)
+		// Should keep TOC priority (highest: 110 > 100 > 50)
+		assert.Equal(t, locdoc.PriorityTOC, links[0].Priority)
+		assert.Equal(t, "toc", links[0].Source)
+	})
+
 	t.Run("handles empty HTML", func(t *testing.T) {
 		t.Parallel()
 

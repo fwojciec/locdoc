@@ -9,6 +9,8 @@ import (
 )
 
 // MkDocsSelector extracts links from MkDocs Material documentation sites.
+// Validated against MkDocs Material v8.x and v9.x.
+//
 // It targets MkDocs-specific navigation elements:
 // - .md-nav--primary for the main navigation
 // - .md-sidebar--secondary for the on-page TOC

@@ -9,7 +9,9 @@ import (
 )
 
 // VuePressSelector extracts links from VuePress and VitePress documentation sites.
-// It supports both VuePress 1.x/2.x and VitePress:
+// Validated against VuePress v1.x/v2.x and VitePress v1.x.
+//
+// It supports both VuePress and VitePress:
 // - .sidebar-links, .sidebar for VuePress classic
 // - .VPSidebar, .VPNav for VitePress
 // - .VPDocAsideOutline for VitePress TOC

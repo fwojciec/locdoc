@@ -9,6 +9,8 @@ import (
 )
 
 // SphinxSelector extracts links from Sphinx documentation sites.
+// Validated against Sphinx v4.x-v7.x with ReadTheDocs and classic themes.
+//
 // It supports both the ReadTheDocs theme and the classic Sphinx theme:
 // - .wy-nav-side, .wy-menu-vertical for ReadTheDocs theme
 // - .sphinxsidebar for classic theme
