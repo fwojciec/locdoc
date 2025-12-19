@@ -16,9 +16,7 @@ func TestBaseSelector_Name(t *testing.T) {
 	t.Parallel()
 
 	s := goquery.NewBaseSelector()
-	if got := s.Name(); got != "base" {
-		t.Errorf("Name() = %q, want %q", got, "base")
-	}
+	assert.Equal(t, "base", s.Name())
 }
 
 func TestBaseSelector_ExtractLinks(t *testing.T) {
@@ -182,5 +180,145 @@ func TestBaseSelector_ExtractLinks(t *testing.T) {
 		// Should keep the nav link (higher priority than footer)
 		assert.Equal(t, "https://example.com/docs/guide", links[0].URL)
 		assert.Equal(t, locdoc.PriorityNavigation, links[0].Priority)
+	})
+
+	t.Run("returns error for invalid base URL", func(t *testing.T) {
+		t.Parallel()
+
+		html := `<html><body><nav><a href="/docs">Docs</a></nav></body></html>`
+
+		s := goquery.NewBaseSelector()
+		_, err := s.ExtractLinks(html, "://invalid-url")
+
+		require.Error(t, err)
+		assert.Equal(t, locdoc.EINVALID, locdoc.ErrorCode(err))
+	})
+
+	t.Run("handles empty HTML", func(t *testing.T) {
+		t.Parallel()
+
+		s := goquery.NewBaseSelector()
+		links, err := s.ExtractLinks("", "https://example.com")
+
+		require.NoError(t, err)
+		assert.Empty(t, links)
+	})
+
+	t.Run("preserves fragments and query params in URLs", func(t *testing.T) {
+		t.Parallel()
+
+		html := `<!DOCTYPE html>
+<html>
+<body>
+<nav>
+	<a href="/docs/guide#section1">Section Link</a>
+	<a href="/docs/search?q=test">Search Link</a>
+</nav>
+</body>
+</html>`
+
+		s := goquery.NewBaseSelector()
+		links, err := s.ExtractLinks(html, "https://example.com")
+
+		require.NoError(t, err)
+		require.Len(t, links, 2)
+
+		assert.Equal(t, "https://example.com/docs/guide#section1", links[0].URL)
+		assert.Equal(t, "https://example.com/docs/search?q=test", links[1].URL)
+	})
+
+	t.Run("skips javascript and mailto links", func(t *testing.T) {
+		t.Parallel()
+
+		html := `<!DOCTYPE html>
+<html>
+<body>
+<nav>
+	<a href="/docs/intro">Real Link</a>
+	<a href="javascript:void(0)">JS Link</a>
+	<a href="mailto:test@example.com">Email Link</a>
+	<a href="tel:+1234567890">Phone Link</a>
+</nav>
+</body>
+</html>`
+
+		s := goquery.NewBaseSelector()
+		links, err := s.ExtractLinks(html, "https://example.com")
+
+		require.NoError(t, err)
+		require.Len(t, links, 1)
+
+		assert.Equal(t, "https://example.com/docs/intro", links[0].URL)
+	})
+
+	t.Run("handles anchor-only links", func(t *testing.T) {
+		t.Parallel()
+
+		html := `<!DOCTYPE html>
+<html>
+<body>
+<nav>
+	<a href="#section1">Anchor Only</a>
+	<a href="/docs/guide">Full Path</a>
+</nav>
+</body>
+</html>`
+
+		s := goquery.NewBaseSelector()
+		links, err := s.ExtractLinks(html, "https://example.com/current/page")
+
+		require.NoError(t, err)
+		require.Len(t, links, 2)
+
+		// Anchor-only resolves to current page with fragment
+		assert.Equal(t, "https://example.com/current/page#section1", links[0].URL)
+		assert.Equal(t, "https://example.com/docs/guide", links[1].URL)
+	})
+
+	t.Run("handles protocol-relative URLs", func(t *testing.T) {
+		t.Parallel()
+
+		html := `<!DOCTYPE html>
+<html>
+<body>
+<nav>
+	<a href="//example.com/docs/guide">Protocol Relative Same Host</a>
+	<a href="//other.com/page">Protocol Relative External</a>
+</nav>
+</body>
+</html>`
+
+		s := goquery.NewBaseSelector()
+		links, err := s.ExtractLinks(html, "https://example.com")
+
+		require.NoError(t, err)
+		require.Len(t, links, 1)
+
+		// Only same-host protocol-relative URL should be included
+		assert.Equal(t, "https://example.com/docs/guide", links[0].URL)
+	})
+
+	t.Run("filters subdomain links (exact host match)", func(t *testing.T) {
+		t.Parallel()
+
+		html := `<!DOCTYPE html>
+<html>
+<body>
+<nav>
+	<a href="/docs/intro">Same Host</a>
+	<a href="https://docs.example.com/guide">Subdomain Link</a>
+	<a href="https://api.example.com/reference">Another Subdomain</a>
+</nav>
+</body>
+</html>`
+
+		s := goquery.NewBaseSelector()
+		links, err := s.ExtractLinks(html, "https://example.com")
+
+		require.NoError(t, err)
+		require.Len(t, links, 1)
+
+		// Only exact host match, subdomains are filtered
+		assert.Equal(t, "https://example.com/docs/intro", links[0].URL)
 	})
 }
