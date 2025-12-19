@@ -382,6 +382,91 @@ func TestCrawler_CrawlProject(t *testing.T) {
 		}
 	})
 
+	t.Run("recursive crawl stops on context cancellation", func(t *testing.T) {
+		t.Parallel()
+
+		fetchCount := 0
+		ctx, cancel := context.WithCancel(context.Background())
+
+		c := &crawl.Crawler{
+			Sitemaps: &mock.SitemapService{
+				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
+					return []string{}, nil
+				},
+			},
+			Fetcher: &mock.Fetcher{
+				FetchFn: func(_ context.Context, _ string) (string, error) {
+					fetchCount++
+					return `<html><body><p>Content</p></body></html>`, nil
+				},
+			},
+			Extractor: &mock.Extractor{
+				ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
+					return &locdoc.ExtractResult{
+						Title:       "Test",
+						ContentHTML: "<p>Content</p>",
+					}, nil
+				},
+			},
+			Converter: &mock.Converter{
+				ConvertFn: func(_ string) (string, error) {
+					return "Content", nil
+				},
+			},
+			Documents: &mock.DocumentService{
+				CreateDocumentFn: func(_ context.Context, doc *locdoc.Document) error {
+					return nil
+				},
+			},
+			TokenCounter: &mock.TokenCounter{
+				CountTokensFn: func(_ context.Context, _ string) (int, error) {
+					return 1, nil
+				},
+			},
+			LinkSelectors: &mock.LinkSelectorRegistry{
+				GetForHTMLFn: func(html string) locdoc.LinkSelector {
+					return &mock.LinkSelector{
+						ExtractLinksFn: func(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
+							// Return many links to ensure there's work queued
+							return []locdoc.DiscoveredLink{
+								{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
+								{URL: "https://example.com/docs/page2", Priority: locdoc.PriorityNavigation},
+								{URL: "https://example.com/docs/page3", Priority: locdoc.PriorityNavigation},
+							}, nil
+						},
+						NameFn: func() string { return "test" },
+					}
+				},
+			},
+			RateLimiter: &mock.DomainLimiter{
+				WaitFn: func(ctx context.Context, _ string) error {
+					// Cancel after first URL is processed
+					if fetchCount >= 1 {
+						cancel()
+					}
+					return ctx.Err()
+				},
+			},
+			Concurrency: 1,
+			RetryDelays: []time.Duration{0},
+		}
+
+		project := &locdoc.Project{
+			ID:        "test-id",
+			Name:      "test",
+			SourceURL: "https://example.com/docs/",
+		}
+
+		result, err := c.CrawlProject(ctx, project, nil)
+
+		// Should return without error (partial results)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		// Should have processed exactly 1 URL (seed) before cancellation stopped further processing
+		assert.Equal(t, 1, result.Saved)
+		assert.Equal(t, 1, fetchCount, "should stop after first fetch due to cancellation")
+	})
+
 	t.Run("crawls single URL and saves document", func(t *testing.T) {
 		t.Parallel()
 
