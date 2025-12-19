@@ -7,6 +7,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.11.0
 	github.com/alecthomas/kong v1.13.0
 	github.com/beevik/etree v1.6.0
+	github.com/bits-and-blooms/bloom/v3 v3.7.1
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/go-rod/rod v0.116.2
 	github.com/google/uuid v1.6.0
@@ -26,6 +27,7 @@ require (
 	github.com/RadhiFadlillah/whatlanggo v0.0.0-20240916001553-aac1f0f737fc // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de // indirect
+	github.com/bits-and-blooms/bitset v1.24.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/eliben/go-sentencepiece v0.6.0 // indirect
 	github.com/elliotchance/pie/v2 v2.9.0 // indirect
