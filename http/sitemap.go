@@ -210,13 +210,16 @@ func (s *SitemapService) processSitemap(ctx context.Context, sitemapURL string, 
 
 	body, err := s.fetchURL(ctx, sitemapURL)
 	if err != nil {
-		// Treat 404s as "sitemap doesn't exist" (empty URLs) to enable recursive crawling fallback.
-		// Other errors (context canceled, network errors) are propagated.
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
+		// Propagate context cancellation errors.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
 		}
-		// Non-context errors (like 404) are treated as "no URLs found"
-		return nil, nil
+		// Treat HTTP 404 as "sitemap doesn't exist" (empty URLs) to enable recursive crawling fallback.
+		// Other errors (network errors, server errors) are propagated.
+		if strings.Contains(err.Error(), "HTTP 404") {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("fetching sitemap %s: %w", sitemapURL, err)
 	}
 	defer body.Close()
 
