@@ -424,6 +424,28 @@ func TestSitemapService_DiscoverURLs_PathPrefixRespectsBoundaries(t *testing.T) 
 	assert.Contains(t, urls, srv.URL+"/api/v2/docs")
 }
 
+func TestSitemapService_DiscoverURLs_SitemapDeclaredInRobotsBut404(t *testing.T) {
+	t.Parallel()
+
+	// robots.txt declares a sitemap, but the sitemap doesn't exist (404)
+	// This should return empty URLs (not error) to allow recursive crawling fallback
+	robotsTxt := `User-agent: *
+Sitemap: {{BASE}}/sitemap.xml
+`
+
+	srv := newTestServer(t, map[string]string{
+		"/robots.txt": robotsTxt,
+		// Note: /sitemap.xml is NOT served (will return 404)
+	})
+	defer srv.Close()
+
+	svc := locdochttp.NewSitemapService(srv.Client())
+	urls, err := svc.DiscoverURLs(context.Background(), srv.URL, nil)
+
+	require.NoError(t, err, "404 on declared sitemap should not be an error")
+	assert.Empty(t, urls, "should return empty URLs when sitemap doesn't exist")
+}
+
 func TestSitemapService_DiscoverURLs_FindsSitemapAtDomainRoot(t *testing.T) {
 	t.Parallel()
 
