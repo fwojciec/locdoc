@@ -2,6 +2,7 @@ package crawl
 
 import (
 	"container/heap"
+	"strings"
 	"sync"
 
 	"github.com/fwojciec/locdoc"
@@ -32,14 +33,25 @@ func NewFrontier(n uint, fpRate float64) *Frontier {
 
 // Push adds a link to the frontier.
 // Returns false if the URL has already been seen.
+// URL fragments are stripped before deduplication - URLs differing only by fragment
+// are considered duplicates.
 func (f *Frontier) Push(link locdoc.DiscoveredLink) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	if f.seen.Test(link.URL) {
+	// Strip fragment from URL for deduplication
+	url := link.URL
+	if idx := strings.Index(url, "#"); idx != -1 {
+		url = url[:idx]
+	}
+
+	if f.seen.Test(url) {
 		return false
 	}
-	f.seen.Add(link.URL)
+	f.seen.Add(url)
+
+	// Store the URL without fragment
+	link.URL = url
 	heap.Push(f.queue, link)
 	return true
 }
@@ -65,9 +77,15 @@ func (f *Frontier) Len() int {
 }
 
 // Seen returns true if the URL has been processed or queued.
-func (f *Frontier) Seen(url string) bool {
+// URL fragments are stripped before checking.
+func (f *Frontier) Seen(rawURL string) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
+	url := rawURL
+	if idx := strings.Index(url, "#"); idx != -1 {
+		url = url[:idx]
+	}
 	return f.seen.Test(url)
 }
 

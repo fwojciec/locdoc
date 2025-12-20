@@ -80,18 +80,20 @@ func TestMkDocsSelector_ExtractLinks(t *testing.T) {
 	t.Run("extracts links from md-sidebar--secondary with TOC priority", func(t *testing.T) {
 		t.Parallel()
 
+		// TOC links to OTHER pages should be extracted with TOC priority
+		// But anchor-only links (#section) pointing to current page are filtered as self-referential
 		html := `<!DOCTYPE html>
 <html>
 <head><title>MkDocs Material</title></head>
 <body>
 <nav class="md-nav md-nav--primary">
-	<ul><li><a href="/docs/page">Page</a></li></ul>
+	<ul><li><a href="/docs/other-page">Other Page</a></li></ul>
 </nav>
 <aside class="md-sidebar md-sidebar--secondary">
 	<nav class="md-nav md-nav--secondary">
 		<ul class="md-nav__list">
-			<li><a href="#overview">Overview</a></li>
-			<li><a href="#installation">Installation</a></li>
+			<li><a href="/docs/overview">Overview</a></li>
+			<li><a href="/docs/installation">Installation</a></li>
 		</ul>
 	</nav>
 </aside>
@@ -102,7 +104,7 @@ func TestMkDocsSelector_ExtractLinks(t *testing.T) {
 		links, err := s.ExtractLinks(html, "https://example.com/docs/page")
 
 		require.NoError(t, err)
-		// Should have primary nav link + TOC links
+		// Should have primary nav link + TOC links to other pages
 		require.Len(t, links, 3)
 
 		// Check TOC links have correct priority
@@ -118,6 +120,36 @@ func TestMkDocsSelector_ExtractLinks(t *testing.T) {
 	t.Run("extracts links from data-md-component toc", func(t *testing.T) {
 		t.Parallel()
 
+		// TOC links to OTHER pages should be extracted
+		// Anchor-only links pointing to current page are filtered as self-referential
+		html := `<!DOCTYPE html>
+<html>
+<head><title>MkDocs</title></head>
+<body>
+<div data-md-component="toc">
+	<nav class="md-nav">
+		<ul>
+			<li><a href="/docs/section-1">Section 1</a></li>
+			<li><a href="/docs/section-2">Section 2</a></li>
+		</ul>
+	</nav>
+</div>
+</body>
+</html>`
+
+		s := goquery.NewMkDocsSelector()
+		links, err := s.ExtractLinks(html, "https://example.com/page")
+
+		require.NoError(t, err)
+		require.Len(t, links, 2)
+		assert.Equal(t, locdoc.PriorityTOC, links[0].Priority)
+	})
+
+	t.Run("filters anchor-only TOC links as self-referential", func(t *testing.T) {
+		t.Parallel()
+
+		// In-page TOC links (anchor-only like #section) pointing to current page
+		// should be filtered as they don't point to new pages to crawl
 		html := `<!DOCTYPE html>
 <html>
 <head><title>MkDocs</title></head>
@@ -137,8 +169,7 @@ func TestMkDocsSelector_ExtractLinks(t *testing.T) {
 		links, err := s.ExtractLinks(html, "https://example.com/page")
 
 		require.NoError(t, err)
-		require.Len(t, links, 2)
-		assert.Equal(t, locdoc.PriorityTOC, links[0].Priority)
+		assert.Empty(t, links, "anchor-only links should be filtered as self-referential")
 	})
 
 	t.Run("filters external links", func(t *testing.T) {

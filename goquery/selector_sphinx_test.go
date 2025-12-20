@@ -86,19 +86,20 @@ func TestSphinxSelector_ExtractLinks(t *testing.T) {
 	t.Run("extracts links from toctree-wrapper with TOC priority", func(t *testing.T) {
 		t.Parallel()
 
+		// Use actual page paths for TOC links (not anchor-only which are self-referential)
 		html := `<!DOCTYPE html>
 <html>
 <head><title>Sphinx Docs</title></head>
 <body>
 <nav class="wy-nav-side">
 	<div class="wy-menu-vertical">
-		<ul><li><a href="page.html">Page</a></li></ul>
+		<ul><li><a href="other.html">Other Page</a></li></ul>
 	</div>
 </nav>
 <div class="toctree-wrapper compound">
 	<ul>
-		<li class="toctree-l1"><a class="reference internal" href="#section-1">Section 1</a></li>
-		<li class="toctree-l1"><a class="reference internal" href="#section-2">Section 2</a></li>
+		<li class="toctree-l1"><a class="reference internal" href="section-1.html">Section 1</a></li>
+		<li class="toctree-l1"><a class="reference internal" href="section-2.html">Section 2</a></li>
 	</ul>
 </div>
 </body>
@@ -123,14 +124,15 @@ func TestSphinxSelector_ExtractLinks(t *testing.T) {
 	t.Run("extracts links from localtoc with TOC priority", func(t *testing.T) {
 		t.Parallel()
 
+		// Use actual page paths for TOC links (not anchor-only which are self-referential)
 		html := `<!DOCTYPE html>
 <html>
 <head><title>Sphinx</title></head>
 <body>
 <div id="localtoc">
 	<ul>
-		<li><a href="#overview">Overview</a></li>
-		<li><a href="#details">Details</a></li>
+		<li><a href="overview.html">Overview</a></li>
+		<li><a href="details.html">Details</a></li>
 	</ul>
 </div>
 </body>

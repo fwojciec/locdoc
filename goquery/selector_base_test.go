@@ -231,7 +231,7 @@ func TestBaseSelector_ExtractLinks(t *testing.T) {
 		assert.Empty(t, links)
 	})
 
-	t.Run("preserves fragments and query params in URLs", func(t *testing.T) {
+	t.Run("strips fragments but preserves query params in URLs", func(t *testing.T) {
 		t.Parallel()
 
 		html := `<!DOCTYPE html>
@@ -250,7 +250,9 @@ func TestBaseSelector_ExtractLinks(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, links, 2)
 
-		assert.Equal(t, "https://example.com/docs/guide#section1", links[0].URL)
+		// Fragments are stripped for deduplication
+		assert.Equal(t, "https://example.com/docs/guide", links[0].URL)
+		// Query params are preserved
 		assert.Equal(t, "https://example.com/docs/search?q=test", links[1].URL)
 	})
 
@@ -278,7 +280,7 @@ func TestBaseSelector_ExtractLinks(t *testing.T) {
 		assert.Equal(t, "https://example.com/docs/intro", links[0].URL)
 	})
 
-	t.Run("handles anchor-only links", func(t *testing.T) {
+	t.Run("filters out anchor-only links as self-referential", func(t *testing.T) {
 		t.Parallel()
 
 		html := `<!DOCTYPE html>
@@ -295,11 +297,10 @@ func TestBaseSelector_ExtractLinks(t *testing.T) {
 		links, err := s.ExtractLinks(html, "https://example.com/current/page")
 
 		require.NoError(t, err)
-		require.Len(t, links, 2)
+		require.Len(t, links, 1)
 
-		// Anchor-only resolves to current page with fragment
-		assert.Equal(t, "https://example.com/current/page#section1", links[0].URL)
-		assert.Equal(t, "https://example.com/docs/guide", links[1].URL)
+		// Anchor-only links are filtered out (they're same-page references)
+		assert.Equal(t, "https://example.com/docs/guide", links[0].URL)
 	})
 
 	t.Run("handles protocol-relative URLs", func(t *testing.T) {
@@ -347,5 +348,28 @@ func TestBaseSelector_ExtractLinks(t *testing.T) {
 
 		// Only exact host match, subdomains are filtered
 		assert.Equal(t, "https://example.com/docs/intro", links[0].URL)
+	})
+
+	t.Run("deduplicates links that differ only by fragment", func(t *testing.T) {
+		t.Parallel()
+
+		html := `<!DOCTYPE html>
+<html>
+<body>
+<nav>
+	<a href="/docs/overview">Overview</a>
+	<a href="/docs/overview#motivation">Motivation</a>
+	<a href="/docs/overview#getting-started">Getting Started</a>
+</nav>
+</body>
+</html>`
+
+		s := goquery.NewBaseSelector()
+		links, err := s.ExtractLinks(html, "https://example.com")
+
+		require.NoError(t, err)
+		require.Len(t, links, 1, "links with same base path but different fragments should be deduplicated")
+
+		assert.Equal(t, "https://example.com/docs/overview", links[0].URL)
 	})
 }

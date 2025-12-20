@@ -103,6 +103,7 @@ func TestVuePressSelector_ExtractLinks(t *testing.T) {
 	t.Run("extracts links from VPDocAsideOutline with TOC priority (VitePress)", func(t *testing.T) {
 		t.Parallel()
 
+		// Use actual page paths for TOC links (not anchor-only which are self-referential)
 		html := `<!DOCTYPE html>
 <html>
 <head><title>VitePress</title></head>
@@ -113,8 +114,8 @@ func TestVuePressSelector_ExtractLinks(t *testing.T) {
 <div class="VPDocAsideOutline">
 	<nav class="VPDocAsideOutlineItem">
 		<ul>
-			<li><a href="#overview">Overview</a></li>
-			<li><a href="#installation">Installation</a></li>
+			<li><a href="/guide/overview">Overview</a></li>
+			<li><a href="/guide/installation">Installation</a></li>
 		</ul>
 	</nav>
 </div>

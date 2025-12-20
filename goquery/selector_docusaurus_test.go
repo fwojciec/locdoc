@@ -54,6 +54,7 @@ func TestDocusaurusSelector_ExtractLinks(t *testing.T) {
 	t.Run("extracts links from table-of-contents with TOC priority", func(t *testing.T) {
 		t.Parallel()
 
+		// Use actual page paths for TOC links (not anchor-only which are self-referential)
 		html := `<!DOCTYPE html>
 <html>
 <head><title>Docusaurus</title></head>
@@ -66,8 +67,8 @@ func TestDocusaurusSelector_ExtractLinks(t *testing.T) {
 <aside class="col col--3">
 	<div class="table-of-contents">
 		<ul>
-			<li><a href="#section-1">Section 1</a></li>
-			<li><a href="#section-2">Section 2</a></li>
+			<li><a href="/docs/section-1">Section 1</a></li>
+			<li><a href="/docs/section-2">Section 2</a></li>
 		</ul>
 	</div>
 </aside>

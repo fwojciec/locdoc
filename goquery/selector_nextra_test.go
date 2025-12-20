@@ -51,18 +51,19 @@ func TestNextraSelector_ExtractLinks(t *testing.T) {
 	t.Run("extracts links from nextra-toc with TOC priority", func(t *testing.T) {
 		t.Parallel()
 
+		// Use actual page paths for TOC links (not anchor-only which are self-referential)
 		html := `<!DOCTYPE html>
 <html>
 <head><title>Nextra</title></head>
 <body>
 <nav class="nextra-sidebar">
-	<ul><li><a href="/docs/page">Page</a></li></ul>
+	<ul><li><a href="/docs/other">Other Page</a></li></ul>
 </nav>
 <div class="nextra-toc">
 	<nav>
 		<ul>
-			<li><a href="#overview">Overview</a></li>
-			<li><a href="#installation">Installation</a></li>
+			<li><a href="/docs/overview">Overview</a></li>
+			<li><a href="/docs/installation">Installation</a></li>
 		</ul>
 	</nav>
 </div>
