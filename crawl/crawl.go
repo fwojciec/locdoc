@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -63,12 +64,13 @@ type ProgressFunc func(event ProgressEvent)
 
 // crawlResult holds the outcome of processing a single URL.
 type crawlResult struct {
-	position int
-	url      string
-	title    string
-	markdown string
-	hash     string
-	err      error
+	position   int
+	url        string
+	title      string
+	markdown   string
+	hash       string
+	err        error
+	discovered []locdoc.DiscoveredLink // Links discovered on this page (for recursive crawling)
 }
 
 // CrawlProject crawls all pages for a project and saves them as documents.
@@ -276,9 +278,7 @@ const (
 
 // recursiveCrawl performs recursive link-following when sitemap discovery fails.
 // It starts from the project's source URL and follows links within the path prefix scope.
-//
-// Note: URLs are processed sequentially (not concurrently) to simplify rate limiting
-// and frontier management. For sites requiring high throughput, use sitemap-based crawling.
+// URLs are processed concurrently using a worker pool coordinated by the main goroutine.
 func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, urlFilter *locdoc.URLFilter, progress ProgressFunc) (*Result, error) {
 	// Parse source URL to get base path for scope limiting
 	sourceURL, err := url.Parse(project.SourceURL)
@@ -294,150 +294,107 @@ func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, u
 		Priority: locdoc.PriorityNavigation,
 	})
 
+	// Set up concurrency
+	concurrency := c.Concurrency
+	if concurrency <= 0 {
+		concurrency = 10
+	}
+
+	// Channels for worker coordination
+	workCh := make(chan locdoc.DiscoveredLink, concurrency)
+	resultCh := make(chan crawlResult)
+
+	// Start worker pool
+	var wg sync.WaitGroup
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c.recursiveCrawlWorker(ctx, workCh, resultCh)
+		}()
+	}
+
+	// Close result channel when all workers are done
+	go func() {
+		wg.Wait()
+		close(resultCh)
+	}()
+
+	// Coordinator loop
 	var result Result
-	position := 0
-	processedCount := 0 // Track attempts for safety limit (maxRecursiveCrawlURLs)
-	completedCount := 0 // Track completed (success + failure) for progress reporting
+	var position int
+	processedCount := 0 // URLs dispatched to workers
+	pending := 0        // URLs currently being processed
+	completedCount := 0 // Completed (success + failure) for progress reporting
+	var nextLink *locdoc.DiscoveredLink
 
-	// Process URLs from frontier
+	// Get first link
+	if link, ok := frontier.Pop(); ok {
+		nextLink = &link
+	}
+
+coordinatorLoop:
 	for {
-		link, ok := frontier.Pop()
-		if !ok {
-			break // Frontier empty
+		// Check termination conditions
+		if nextLink == nil && pending == 0 {
+			break coordinatorLoop
 		}
-
-		// Safety limit to prevent runaway crawls
-		if processedCount >= maxRecursiveCrawlURLs {
-			break
-		}
-		processedCount++
 
 		// Check context cancellation
 		if ctx.Err() != nil {
-			break
+			break coordinatorLoop
 		}
 
-		// Rate limit
-		linkURL, err := url.Parse(link.URL)
-		if err != nil {
-			result.Failed++
-			continue
-		}
-		if err := c.RateLimiter.Wait(ctx, linkURL.Host); err != nil {
-			break // Context canceled
-		}
-
-		// Fetch with retry
-		delays := c.RetryDelays
-		if delays == nil {
-			delays = DefaultRetryDelays()
-		}
-		fetchFn := func(ctx context.Context, url string) (string, error) {
-			return c.Fetcher.Fetch(ctx, url)
-		}
-		html, err := FetchWithRetryDelays(ctx, link.URL, fetchFn, nil, delays)
-		if err != nil {
-			result.Failed++
-			completedCount++
-			if progress != nil {
-				progress(ProgressEvent{
-					Type:      ProgressFailed,
-					Completed: completedCount,
-					URL:       link.URL,
-					Error:     err,
-				})
+		// Try to dispatch work or receive results
+		if nextLink != nil && processedCount < maxRecursiveCrawlURLs {
+			select {
+			case <-ctx.Done():
+				break coordinatorLoop
+			case workCh <- *nextLink:
+				processedCount++
+				pending++
+				nextLink = nil
+			case crawlRes := <-resultCh:
+				pending--
+				c.processRecursiveResult(ctx, &crawlRes, &result, &position, &completedCount, project, progress, frontier, sourceURL, pathPrefix, urlFilter)
 			}
-			continue
-		}
-
-		// Extract links and add to frontier
-		selector := c.LinkSelectors.GetForHTML(html)
-		links, err := selector.ExtractLinks(html, link.URL)
-		if err == nil {
-			for _, discovered := range links {
-				// Check scope: must be same host and within path prefix
-				discoveredURL, err := url.Parse(discovered.URL)
-				if err != nil {
-					continue
+		} else {
+			// No more work to dispatch, just receive results
+			select {
+			case <-ctx.Done():
+				break coordinatorLoop
+			case crawlRes, ok := <-resultCh:
+				if !ok {
+					break coordinatorLoop
 				}
-				if discoveredURL.Host != sourceURL.Host {
-					continue
-				}
-				if !strings.HasPrefix(discoveredURL.Path, pathPrefix) {
-					continue
-				}
-				// Apply URL filter if configured
-				if urlFilter != nil && !matchesFilter(discovered.URL, urlFilter) {
-					continue
-				}
-				frontier.Push(discovered)
+				pending--
+				c.processRecursiveResult(ctx, &crawlRes, &result, &position, &completedCount, project, progress, frontier, sourceURL, pathPrefix, urlFilter)
 			}
 		}
 
-		// Extract content
-		extracted, err := c.Extractor.Extract(html)
-		if err != nil {
-			result.Failed++
-			completedCount++
-			if progress != nil {
-				progress(ProgressEvent{
-					Type:      ProgressFailed,
-					Completed: completedCount,
-					URL:       link.URL,
-					Error:     err,
-				})
-			}
-			continue
-		}
-
-		// Convert to markdown
-		markdown, err := c.Converter.Convert(extracted.ContentHTML)
-		if err != nil {
-			result.Failed++
-			completedCount++
-			if progress != nil {
-				progress(ProgressEvent{
-					Type:      ProgressFailed,
-					Completed: completedCount,
-					URL:       link.URL,
-					Error:     err,
-				})
-			}
-			continue
-		}
-
-		// Save document
-		doc := &locdoc.Document{
-			ProjectID:   project.ID,
-			SourceURL:   link.URL,
-			Title:       extracted.Title,
-			Content:     markdown,
-			ContentHash: computeHash(markdown),
-			Position:    position,
-		}
-		position++
-
-		if err := c.Documents.CreateDocument(ctx, doc); err != nil {
-			result.Failed++
-			completedCount++
-			continue
-		}
-
-		result.Saved++
-		result.Bytes += len(markdown)
-		if c.TokenCounter != nil {
-			if tokens, err := c.TokenCounter.CountTokens(ctx, markdown); err == nil {
-				result.Tokens += tokens
+		// Try to get next link if we don't have one
+		if nextLink == nil && processedCount < maxRecursiveCrawlURLs {
+			if link, ok := frontier.Pop(); ok {
+				nextLink = &link
 			}
 		}
+	}
 
-		completedCount++
-		if progress != nil {
-			progress(ProgressEvent{
-				Type:      ProgressCompleted,
-				Completed: completedCount,
-				URL:       link.URL,
-			})
+	// Signal workers to stop and drain remaining results
+	close(workCh)
+
+	// Drain any remaining results with timeout
+	drainTimeout := time.After(5 * time.Second)
+drainLoop:
+	for {
+		select {
+		case crawlRes, ok := <-resultCh:
+			if !ok {
+				break drainLoop
+			}
+			c.processRecursiveResult(ctx, &crawlRes, &result, &position, &completedCount, project, progress, frontier, sourceURL, pathPrefix, urlFilter)
+		case <-drainTimeout:
+			break drainLoop
 		}
 	}
 
@@ -448,6 +405,172 @@ func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, u
 	}
 
 	return &result, nil
+}
+
+// recursiveCrawlWorker processes URLs from workCh and sends results to resultCh.
+func (c *Crawler) recursiveCrawlWorker(
+	ctx context.Context,
+	workCh <-chan locdoc.DiscoveredLink,
+	resultCh chan<- crawlResult,
+) {
+	for link := range workCh {
+		result := c.processRecursiveURL(ctx, link)
+		select {
+		case resultCh <- result:
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// processRecursiveURL fetches and processes a single URL for recursive crawling.
+func (c *Crawler) processRecursiveURL(ctx context.Context, link locdoc.DiscoveredLink) crawlResult {
+	result := crawlResult{
+		url: link.URL,
+	}
+
+	// Parse URL for rate limiting
+	linkURL, err := url.Parse(link.URL)
+	if err != nil {
+		result.err = err
+		return result
+	}
+
+	// Rate limit
+	if err := c.RateLimiter.Wait(ctx, linkURL.Host); err != nil {
+		result.err = err
+		return result
+	}
+
+	// Fetch with retry
+	delays := c.RetryDelays
+	if delays == nil {
+		delays = DefaultRetryDelays()
+	}
+	fetchFn := func(ctx context.Context, url string) (string, error) {
+		return c.Fetcher.Fetch(ctx, url)
+	}
+	html, err := FetchWithRetryDelays(ctx, link.URL, fetchFn, nil, delays)
+	if err != nil {
+		result.err = err
+		return result
+	}
+
+	// Extract links (coordinator will filter for scope)
+	selector := c.LinkSelectors.GetForHTML(html)
+	links, err := selector.ExtractLinks(html, link.URL)
+	if err == nil {
+		result.discovered = links
+	}
+
+	// Extract content
+	extracted, err := c.Extractor.Extract(html)
+	if err != nil {
+		result.err = err
+		return result
+	}
+
+	// Convert to markdown
+	markdown, err := c.Converter.Convert(extracted.ContentHTML)
+	if err != nil {
+		result.err = err
+		return result
+	}
+
+	result.title = extracted.Title
+	result.markdown = markdown
+	result.hash = computeHash(markdown)
+
+	return result
+}
+
+// processRecursiveResult handles a completed crawl result from a worker.
+func (c *Crawler) processRecursiveResult(
+	ctx context.Context,
+	crawlRes *crawlResult,
+	result *Result,
+	position *int,
+	completedCount *int,
+	project *locdoc.Project,
+	progress ProgressFunc,
+	frontier *Frontier,
+	sourceURL *url.URL,
+	pathPrefix string,
+	urlFilter *locdoc.URLFilter,
+) {
+	// Add discovered links to frontier (after scope filtering)
+	for _, discovered := range crawlRes.discovered {
+		discoveredURL, err := url.Parse(discovered.URL)
+		if err != nil {
+			continue
+		}
+		if discoveredURL.Host != sourceURL.Host {
+			continue
+		}
+		if !strings.HasPrefix(discoveredURL.Path, pathPrefix) {
+			continue
+		}
+		if urlFilter != nil && !matchesFilter(discovered.URL, urlFilter) {
+			continue
+		}
+		frontier.Push(discovered)
+	}
+
+	if crawlRes.err != nil {
+		result.Failed++
+		*completedCount++
+		if progress != nil {
+			progress(ProgressEvent{
+				Type:      ProgressFailed,
+				Completed: *completedCount,
+				URL:       crawlRes.url,
+				Error:     crawlRes.err,
+			})
+		}
+		return
+	}
+
+	// Save document
+	doc := &locdoc.Document{
+		ProjectID:   project.ID,
+		SourceURL:   crawlRes.url,
+		Title:       crawlRes.title,
+		Content:     crawlRes.markdown,
+		ContentHash: crawlRes.hash,
+		Position:    *position,
+	}
+	*position++
+
+	if err := c.Documents.CreateDocument(ctx, doc); err != nil {
+		result.Failed++
+		*completedCount++
+		if progress != nil {
+			progress(ProgressEvent{
+				Type:      ProgressFailed,
+				Completed: *completedCount,
+				URL:       crawlRes.url,
+				Error:     err,
+			})
+		}
+		return
+	}
+
+	result.Saved++
+	result.Bytes += len(crawlRes.markdown)
+	if c.TokenCounter != nil {
+		if tokens, err := c.TokenCounter.CountTokens(ctx, crawlRes.markdown); err == nil {
+			result.Tokens += tokens
+		}
+	}
+
+	*completedCount++
+	if progress != nil {
+		progress(ProgressEvent{
+			Type:      ProgressCompleted,
+			Completed: *completedCount,
+			URL:       crawlRes.url,
+		})
+	}
 }
 
 // matchesFilter checks if a URL matches the include patterns.
