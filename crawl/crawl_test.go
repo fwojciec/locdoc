@@ -634,6 +634,9 @@ func TestCrawler_CrawlProject(t *testing.T) {
 		assert.Equal(t, crawl.ProgressFinished, lastEvent.Type, "last event should be Finished")
 	})
 
+	// Verifies that when CreateDocument fails during recursive crawling,
+	// a ProgressFailed event is emitted with the URL and error. This ensures
+	// users see feedback about save failures (same as fetch/extract failures).
 	t.Run("recursive crawl emits ProgressFailed when CreateDocument fails", func(t *testing.T) {
 		t.Parallel()
 
