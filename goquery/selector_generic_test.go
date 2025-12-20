@@ -314,11 +314,12 @@ func TestGenericSelector_ExtractLinks(t *testing.T) {
 		assert.Equal(t, "https://example.com/docs/valid", links[0].URL)
 	})
 
-	t.Run("falls back to all internal links when semantic selectors find nothing", func(t *testing.T) {
+	t.Run("falls back to path-filtered links when semantic selectors find nothing", func(t *testing.T) {
 		t.Parallel()
 
 		// Simulates a Tailwind CSS site with no semantic HTML elements
 		// All navigation is in plain divs with utility classes
+		// Page has docs links AND other site links - only docs links should be extracted
 		html := `<!DOCTYPE html>
 <html>
 <head><title>TanStack-like Docs</title></head>
@@ -327,16 +328,19 @@ func TestGenericSelector_ExtractLinks(t *testing.T) {
 	<a href="/query/v5/docs/overview">Overview</a>
 	<a href="/query/v5/docs/installation">Installation</a>
 	<a href="/query/v5/docs/quick-start">Quick Start</a>
+	<a href="/query/v4/docs/old-version">Old Version</a>
+	<a href="/router/docs/intro">Router Docs</a>
 	<a href="https://github.com/tanstack/query">GitHub</a>
 </div>
 </body>
 </html>`
 
 		s := goquery.NewGenericSelector()
-		links, err := s.ExtractLinks(html, "https://tanstack.com")
+		// Base URL includes path - fallback should only include links under this path
+		links, err := s.ExtractLinks(html, "https://tanstack.com/query/v5/docs")
 
 		require.NoError(t, err)
-		require.Len(t, links, 3) // Only internal links, not GitHub
+		require.Len(t, links, 3) // Only /query/v5/docs/* links
 
 		// All should have fallback priority
 		for _, link := range links {
@@ -344,7 +348,7 @@ func TestGenericSelector_ExtractLinks(t *testing.T) {
 			assert.Equal(t, "fallback", link.Source)
 		}
 
-		// Verify the URLs are correct
+		// Verify the URLs are correct - only v5 docs, not v4 or router
 		urls := make([]string, len(links))
 		for i, l := range links {
 			urls[i] = l.URL
@@ -352,6 +356,8 @@ func TestGenericSelector_ExtractLinks(t *testing.T) {
 		assert.Contains(t, urls, "https://tanstack.com/query/v5/docs/overview")
 		assert.Contains(t, urls, "https://tanstack.com/query/v5/docs/installation")
 		assert.Contains(t, urls, "https://tanstack.com/query/v5/docs/quick-start")
+		assert.NotContains(t, urls, "https://tanstack.com/query/v4/docs/old-version")
+		assert.NotContains(t, urls, "https://tanstack.com/router/docs/intro")
 	})
 
 	t.Run("semantic links keep priority while fallback adds additional links", func(t *testing.T) {
