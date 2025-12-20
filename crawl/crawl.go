@@ -276,21 +276,39 @@ const (
 	maxRecursiveCrawlURLs = 1000
 )
 
-// recursiveCrawl performs recursive link-following when sitemap discovery fails.
-// It starts from the project's source URL and follows links within the path prefix scope.
-// URLs are processed concurrently using a worker pool coordinated by the main goroutine.
-func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, urlFilter *locdoc.URLFilter, progress ProgressFunc) (*Result, error) {
+// walkProcessor processes a URL and returns a crawlResult.
+type walkProcessor func(ctx context.Context, link locdoc.DiscoveredLink) crawlResult
+
+// walkResultHandler handles a completed crawlResult.
+// It should add discovered links to the frontier (after filtering) and handle the result.
+type walkResultHandler func(result *crawlResult, frontier *Frontier, parsedSourceURL *url.URL, pathPrefix string, urlFilter *locdoc.URLFilter)
+
+// walkFrontier manages concurrent URL processing starting from sourceURL.
+// It handles the shared logic between DiscoverURLs and recursiveCrawl:
+// - Frontier management with Bloom filter deduplication
+// - Concurrent worker pool
+// - Work dispatch and result collection
+//
+// The processURL function is called for each URL to fetch and process it.
+// The handleResult function is called for each result to filter links and handle the outcome.
+func (c *Crawler) walkFrontier(
+	ctx context.Context,
+	sourceURL string,
+	urlFilter *locdoc.URLFilter,
+	processURL walkProcessor,
+	handleResult walkResultHandler,
+) error {
 	// Parse source URL to get base path for scope limiting
-	sourceURL, err := url.Parse(project.SourceURL)
+	parsedSourceURL, err := url.Parse(sourceURL)
 	if err != nil {
-		return nil, fmt.Errorf("invalid source URL: %w", err)
+		return fmt.Errorf("invalid source URL: %w", err)
 	}
-	pathPrefix := sourceURL.Path
+	pathPrefix := parsedSourceURL.Path
 
 	// Create frontier and seed with source URL
 	frontier := NewFrontier(frontierExpectedURLs, frontierFalsePositiveRate)
 	frontier.Push(locdoc.DiscoveredLink{
-		URL:      project.SourceURL,
+		URL:      sourceURL,
 		Priority: locdoc.PriorityNavigation,
 	})
 
@@ -310,7 +328,14 @@ func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, u
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			c.recursiveCrawlWorker(ctx, workCh, resultCh)
+			for link := range workCh {
+				result := processURL(ctx, link)
+				select {
+				case resultCh <- result:
+				case <-ctx.Done():
+					return
+				}
+			}
 		}()
 	}
 
@@ -321,11 +346,8 @@ func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, u
 	}()
 
 	// Coordinator loop
-	var result Result
-	var position int
 	processedCount := 0 // URLs dispatched to workers
 	pending := 0        // URLs currently being processed
-	completedCount := 0 // Completed (success + failure) for progress reporting
 	var nextLink *locdoc.DiscoveredLink
 
 	// Get first link
@@ -356,7 +378,7 @@ coordinatorLoop:
 				nextLink = nil
 			case crawlRes := <-resultCh:
 				pending--
-				c.processRecursiveResult(ctx, &crawlRes, &result, &position, &completedCount, project, progress, frontier, sourceURL, pathPrefix, urlFilter)
+				handleResult(&crawlRes, frontier, parsedSourceURL, pathPrefix, urlFilter)
 			}
 		} else {
 			// No more work to dispatch, just receive results
@@ -368,7 +390,7 @@ coordinatorLoop:
 					break coordinatorLoop
 				}
 				pending--
-				c.processRecursiveResult(ctx, &crawlRes, &result, &position, &completedCount, project, progress, frontier, sourceURL, pathPrefix, urlFilter)
+				handleResult(&crawlRes, frontier, parsedSourceURL, pathPrefix, urlFilter)
 			}
 		}
 
@@ -392,10 +414,31 @@ drainLoop:
 			if !ok {
 				break drainLoop
 			}
-			c.processRecursiveResult(ctx, &crawlRes, &result, &position, &completedCount, project, progress, frontier, sourceURL, pathPrefix, urlFilter)
+			handleResult(&crawlRes, frontier, parsedSourceURL, pathPrefix, urlFilter)
 		case <-drainTimeout:
 			break drainLoop
 		}
+	}
+
+	return nil
+}
+
+// recursiveCrawl performs recursive link-following when sitemap discovery fails.
+// It starts from the project's source URL and follows links within the path prefix scope.
+// URLs are processed concurrently using walkFrontier.
+func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, urlFilter *locdoc.URLFilter, progress ProgressFunc) (*Result, error) {
+	var result Result
+	var position int
+	completedCount := 0
+
+	// Result handler that saves documents and reports progress
+	handleResult := func(crawlRes *crawlResult, frontier *Frontier, sourceURL *url.URL, pathPrefix string, filter *locdoc.URLFilter) {
+		c.processRecursiveResult(ctx, crawlRes, &result, &position, &completedCount, project, progress, frontier, sourceURL, pathPrefix, filter)
+	}
+
+	err := c.walkFrontier(ctx, project.SourceURL, urlFilter, c.processRecursiveURL, handleResult)
+	if err != nil {
+		return nil, err
 	}
 
 	if progress != nil {
@@ -405,22 +448,6 @@ drainLoop:
 	}
 
 	return &result, nil
-}
-
-// recursiveCrawlWorker processes URLs from workCh and sends results to resultCh.
-func (c *Crawler) recursiveCrawlWorker(
-	ctx context.Context,
-	workCh <-chan locdoc.DiscoveredLink,
-	resultCh chan<- crawlResult,
-) {
-	for link := range workCh {
-		result := c.processRecursiveURL(ctx, link)
-		select {
-		case resultCh <- result:
-		case <-ctx.Done():
-			return
-		}
-	}
 }
 
 // processRecursiveURL fetches and processes a single URL for recursive crawling.
@@ -643,6 +670,8 @@ func FormatTokens(tokens int) string {
 //
 // Discovery stops after processing maxRecursiveCrawlURLs (1000) URLs
 // to prevent runaway crawls on large sites.
+//
+// URLs are processed concurrently using walkFrontier for improved performance.
 func DiscoverURLs(
 	ctx context.Context,
 	sourceURL string,
@@ -651,84 +680,84 @@ func DiscoverURLs(
 	linkSelectors locdoc.LinkSelectorRegistry,
 	rateLimiter locdoc.DomainLimiter,
 ) ([]string, error) {
-	// Parse source URL to get base path for scope limiting
-	parsedURL, err := url.Parse(sourceURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid source URL: %w", err)
+	// Create a minimal Crawler with just the dependencies needed for discovery
+	c := &Crawler{
+		Fetcher:       fetcher,
+		LinkSelectors: linkSelectors,
+		RateLimiter:   rateLimiter,
 	}
-	pathPrefix := parsedURL.Path
 
-	// Create frontier and seed with source URL
-	frontier := NewFrontier(frontierExpectedURLs, frontierFalsePositiveRate)
-	frontier.Push(locdoc.DiscoveredLink{
-		URL:      sourceURL,
-		Priority: locdoc.PriorityNavigation,
-	})
-
+	// Thread-safe collection of discovered URLs
+	var mu sync.Mutex
 	var urls []string
-	processedCount := 0
 
-	// Process URLs from frontier
-	for {
-		link, ok := frontier.Pop()
-		if !ok {
-			break // Frontier empty
+	// Discovery processor: fetch page and extract links (no content extraction)
+	processURL := func(ctx context.Context, link locdoc.DiscoveredLink) crawlResult {
+		result := crawlResult{
+			url: link.URL,
 		}
 
-		// Safety limit to prevent runaway crawls
-		if processedCount >= maxRecursiveCrawlURLs {
-			break
-		}
-		processedCount++
-
-		// Check context cancellation
-		if ctx.Err() != nil {
-			break
+		// Parse URL for rate limiting
+		linkURL, err := url.Parse(link.URL)
+		if err != nil {
+			result.err = err
+			return result
 		}
 
 		// Rate limit
-		linkURL, err := url.Parse(link.URL)
-		if err != nil {
-			continue
-		}
 		if err := rateLimiter.Wait(ctx, linkURL.Host); err != nil {
-			break // Context canceled
+			result.err = err
+			return result
 		}
 
-		// Fetch page to discover links
+		// Fetch page (no retry in discovery mode - keep it fast)
 		html, err := fetcher.Fetch(ctx, link.URL)
 		if err != nil {
-			continue // Skip failed pages in preview mode
+			result.err = err
+			return result
 		}
 
-		// Add this URL to the discovered list
-		urls = append(urls, link.URL)
-
-		// Extract links and add to frontier
+		// Extract links for frontier
 		selector := linkSelectors.GetForHTML(html)
 		links, err := selector.ExtractLinks(html, link.URL)
-		if err != nil {
-			continue
+		if err == nil {
+			result.discovered = links
 		}
 
-		for _, discovered := range links {
-			// Check scope: must be same host and within path prefix
+		return result
+	}
+
+	// Discovery handler: collect URLs and add links to frontier
+	handleResult := func(result *crawlResult, frontier *Frontier, parsedSourceURL *url.URL, pathPrefix string, filter *locdoc.URLFilter) {
+		// Add discovered links to frontier (after scope filtering)
+		for _, discovered := range result.discovered {
 			discoveredURL, err := url.Parse(discovered.URL)
 			if err != nil {
 				continue
 			}
-			if discoveredURL.Host != parsedURL.Host {
+			if discoveredURL.Host != parsedSourceURL.Host {
 				continue
 			}
 			if !strings.HasPrefix(discoveredURL.Path, pathPrefix) {
 				continue
 			}
-			// Apply URL filter if configured
-			if urlFilter != nil && !matchesFilter(discovered.URL, urlFilter) {
+			if filter != nil && !matchesFilter(discovered.URL, filter) {
 				continue
 			}
 			frontier.Push(discovered)
 		}
+
+		// Collect successfully fetched URLs
+		if result.err == nil {
+			mu.Lock()
+			urls = append(urls, result.url)
+			mu.Unlock()
+		}
+	}
+
+	err := c.walkFrontier(ctx, sourceURL, urlFilter, processURL, handleResult)
+	if err != nil {
+		return nil, err
 	}
 
 	return urls, nil
