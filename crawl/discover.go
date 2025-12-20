@@ -4,9 +4,34 @@ import (
 	"context"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/fwojciec/locdoc"
 )
+
+// DiscoverOption configures DiscoverURLs behavior.
+type DiscoverOption func(*discoverConfig)
+
+type discoverConfig struct {
+	concurrency int
+	retryDelays []time.Duration
+}
+
+// WithConcurrency sets the number of concurrent workers for URL discovery.
+// Defaults to 3 if not specified (lower than full crawl to avoid overwhelming browsers).
+func WithConcurrency(n int) DiscoverOption {
+	return func(c *discoverConfig) {
+		c.concurrency = n
+	}
+}
+
+// WithRetryDelays sets the retry delays for failed fetches.
+// Defaults to DefaultRetryDelays() if not specified.
+func WithRetryDelays(delays []time.Duration) DiscoverOption {
+	return func(c *discoverConfig) {
+		c.retryDelays = delays
+	}
+}
 
 // DiscoverURLs recursively discovers URLs from a documentation site.
 // It follows links within the path prefix scope of the source URL.
@@ -16,6 +41,7 @@ import (
 // to prevent runaway crawls on large sites.
 //
 // URLs are processed concurrently using walkFrontier for improved performance.
+// Use WithConcurrency and WithRetryDelays options to configure behavior.
 func DiscoverURLs(
 	ctx context.Context,
 	sourceURL string,
@@ -23,12 +49,24 @@ func DiscoverURLs(
 	fetcher locdoc.Fetcher,
 	linkSelectors locdoc.LinkSelectorRegistry,
 	rateLimiter locdoc.DomainLimiter,
+	opts ...DiscoverOption,
 ) ([]string, error) {
+	// Apply options
+	cfg := &discoverConfig{
+		concurrency: 3, // Lower default for preview mode
+		retryDelays: DefaultRetryDelays(),
+	}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
 	// Create a minimal Crawler with just the dependencies needed for discovery
 	c := &Crawler{
 		Fetcher:       fetcher,
 		LinkSelectors: linkSelectors,
 		RateLimiter:   rateLimiter,
+		Concurrency:   cfg.concurrency,
+		RetryDelays:   cfg.retryDelays,
 	}
 
 	// Collected URLs (handleResult is called sequentially from coordinator)
@@ -53,8 +91,11 @@ func DiscoverURLs(
 			return result
 		}
 
-		// Fetch page (no retry in discovery mode - keep it fast)
-		html, err := fetcher.Fetch(ctx, link.URL)
+		// Fetch page with retry
+		fetchFn := func(ctx context.Context, url string) (string, error) {
+			return fetcher.Fetch(ctx, url)
+		}
+		html, err := FetchWithRetryDelays(ctx, link.URL, fetchFn, nil, cfg.retryDelays)
 		if err != nil {
 			result.err = err
 			return result

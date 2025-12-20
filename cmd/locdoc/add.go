@@ -39,7 +39,8 @@ func (c *AddCmd) Run(deps *Dependencies) error {
 
 		// Fall back to recursive discovery if sitemap returns no URLs
 		if len(urls) == 0 && deps.Fetcher != nil && deps.LinkSelectors != nil && deps.RateLimiter != nil {
-			urls, err = crawl.DiscoverURLs(deps.Ctx, c.URL, urlFilter, deps.Fetcher, deps.LinkSelectors, deps.RateLimiter)
+			urls, err = crawl.DiscoverURLs(deps.Ctx, c.URL, urlFilter, deps.Fetcher, deps.LinkSelectors, deps.RateLimiter,
+				crawl.WithConcurrency(c.Concurrency))
 			if err != nil {
 				fmt.Fprintf(deps.Stderr, "error: %s\n", locdoc.ErrorMessage(err))
 				return err
