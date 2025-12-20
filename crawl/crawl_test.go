@@ -633,6 +633,62 @@ func TestCrawler_CrawlProject(t *testing.T) {
 		lastEvent := events[len(events)-1]
 		assert.Equal(t, crawl.ProgressFinished, lastEvent.Type, "last event should be Finished")
 	})
+
+	t.Run("recursive crawl emits ProgressFailed when CreateDocument fails", func(t *testing.T) {
+		t.Parallel()
+
+		c, m := newTestCrawler()
+		m.Documents.CreateDocumentFn = func(_ context.Context, doc *locdoc.Document) error {
+			// Fail on one specific URL
+			if doc.SourceURL == "https://example.com/docs/page1" {
+				return locdoc.Errorf(locdoc.EINTERNAL, "database error")
+			}
+			return nil
+		}
+		m.LinkSelectors.GetForHTMLFn = func(_ string) locdoc.LinkSelector {
+			return &mock.LinkSelector{
+				ExtractLinksFn: func(_ string, baseURL string) ([]locdoc.DiscoveredLink, error) {
+					if baseURL == "https://example.com/docs/" {
+						return []locdoc.DiscoveredLink{
+							{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
+						}, nil
+					}
+					return nil, nil
+				},
+				NameFn: func() string { return "test" },
+			}
+		}
+
+		project := &locdoc.Project{
+			ID:        "proj-123",
+			Name:      "test",
+			SourceURL: "https://example.com/docs/",
+		}
+
+		var events []crawl.ProgressEvent
+		progress := func(e crawl.ProgressEvent) {
+			events = append(events, e)
+		}
+
+		result, err := c.CrawlProject(context.Background(), project, progress)
+
+		require.NoError(t, err)
+		assert.Equal(t, 1, result.Saved, "should save seed URL only")
+		assert.Equal(t, 1, result.Failed, "should count page1 as failed")
+
+		// Find the ProgressFailed event
+		var failedEvents []crawl.ProgressEvent
+		for _, e := range events {
+			if e.Type == crawl.ProgressFailed {
+				failedEvents = append(failedEvents, e)
+			}
+		}
+
+		require.Len(t, failedEvents, 1, "should emit exactly one ProgressFailed event")
+		assert.Equal(t, "https://example.com/docs/page1", failedEvents[0].URL, "failed event should have correct URL")
+		require.Error(t, failedEvents[0].Error, "failed event should have error")
+		assert.Contains(t, failedEvents[0].Error.Error(), "database error", "error should contain original message")
+	})
 }
 
 func TestTruncateURL(t *testing.T) {
