@@ -102,7 +102,7 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 
 	page, err := incognito.Page(proto.TargetCreateTarget{})
 	if err != nil {
-		incognito.Close()
+		_ = incognito.Close()
 		return "", err
 	}
 
@@ -134,8 +134,8 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 		return "", err
 	}
 
-	// Clean close of entire incognito context
-	incognito.Close()
+	// Clean close of entire incognito context (error intentionally ignored)
+	_ = incognito.Close()
 	return html, nil
 }
 
