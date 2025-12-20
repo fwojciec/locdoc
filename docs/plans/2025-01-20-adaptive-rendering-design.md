@@ -34,7 +34,7 @@ HTTP Fetch (10s timeout, retries)
     │
     ▼
 Detect Framework
-    ├─ Known JS-required (Docsify, GitBook) → Use Rod
+    ├─ Known JS-required (GitBook) → Use Rod
     ├─ Known HTTP-only (Sphinx, MkDocs, ...) → Use HTTP
     └─ Unknown → Fetch with Rod, compare content
                   ├─ >50% more content → Use Rod
@@ -54,9 +54,9 @@ Use chosen fetcher for entire crawl
 Extend existing `Detector` with rendering requirement knowledge:
 
 ```go
-func (d *Detector) RequiresJS(framework string) (requires bool, known bool) {
-    // Returns (true, true) for Docsify, GitBook
-    // Returns (false, true) for Sphinx, MkDocs, Hugo, Docusaurus, VitePress, Nextra, ReadTheDocs
+func (d *Detector) RequiresJS(framework locdoc.Framework) (requires bool, known bool) {
+    // Returns (true, true) for GitBook
+    // Returns (false, true) for Sphinx, MkDocs, Docusaurus, VitePress, VuePress, Nextra
     // Returns (false, false) for unknown - caller should compare content
 }
 ```
@@ -65,15 +65,13 @@ func (d *Detector) RequiresJS(framework string) (requires bool, known bool) {
 
 | Framework | Requires JS |
 |-----------|-------------|
-| Docsify | Yes |
 | GitBook | Yes |
 | Sphinx | No |
 | MkDocs | No |
-| Hugo | No |
 | Docusaurus | No |
 | VitePress | No |
+| VuePress | No |
 | Nextra | No |
-| ReadTheDocs | No |
 
 ### 2. HTTP Fetcher (`http/fetcher.go`)
 
@@ -146,7 +144,7 @@ func (c *Crawler) CrawlProject(ctx context.Context, ...) error {
 
     // 2. Detect framework
     framework := c.Detector.Detect(httpHTML)
-    requires, known := c.Detector.RequiresJS(framework.Name)
+    requires, known := c.Detector.RequiresJS(framework)
 
     // 3. Choose fetcher
     var fetcher locdoc.Fetcher

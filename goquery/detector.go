@@ -144,3 +144,26 @@ func (d *Detector) hasGitBookClasses(doc *goquery.Document) bool {
 	// Require at least two of these GitBook-specific classes
 	return count >= 2
 }
+
+// RequiresJS indicates whether a framework requires JavaScript rendering.
+// Returns (requires, known) where:
+//   - requires: true if the framework needs JS to render content
+//   - known: true if the framework is recognized
+//
+// Unknown frameworks return (false, false).
+func (d *Detector) RequiresJS(framework locdoc.Framework) (requires bool, known bool) {
+	switch framework {
+	// Frameworks that require JavaScript rendering (client-side SPAs)
+	case locdoc.FrameworkGitBook:
+		return true, true
+
+	// Frameworks that output static HTML (SSG/SSR)
+	case locdoc.FrameworkSphinx, locdoc.FrameworkMkDocs, locdoc.FrameworkDocusaurus,
+		locdoc.FrameworkVitePress, locdoc.FrameworkNextra, locdoc.FrameworkVuePress:
+		return false, true
+
+	// Unknown framework
+	default:
+		return false, false
+	}
+}
