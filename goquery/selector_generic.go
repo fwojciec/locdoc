@@ -107,5 +107,11 @@ func (s *GenericSelector) ExtractLinks(html string, baseURL string) ([]locdoc.Di
 	footerSelectors := "footer a[href], .footer a[href]"
 	extractLinks(footerSelectors, locdoc.PriorityFooter, "footer")
 
+	// Fallback: always extract all internal links with low priority.
+	// Links already found via semantic selectors keep their higher priority
+	// due to the deduplication logic. This ensures sites with non-semantic
+	// HTML (like Tailwind CSS) still get their links discovered.
+	extractLinks("a[href]", locdoc.PriorityFallback, "fallback")
+
 	return links, nil
 }
