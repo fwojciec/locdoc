@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.com/fwojciec/locdoc"
 	"github.com/fwojciec/locdoc/crawl"
@@ -38,13 +39,14 @@ type CLI struct {
 
 // AddCmd is the "add" subcommand.
 type AddCmd struct {
-	Name        string   `arg:"" help:"Project name"`
-	URL         string   `arg:"" help:"Documentation URL"`
-	Preview     bool     `short:"p" help:"Show URLs without creating project"`
-	Force       bool     `short:"f" help:"Delete existing project first"`
-	Filter      []string `short:"F" name:"filter" help:"Filter URLs by regex (repeatable)"`
-	Concurrency int      `short:"c" default:"3" help:"Concurrent fetch limit"`
-	Debug       bool     `short:"d" help:"Show debug information"`
+	Name        string        `arg:"" help:"Project name"`
+	URL         string        `arg:"" help:"Documentation URL"`
+	Preview     bool          `short:"p" help:"Show URLs without creating project"`
+	Force       bool          `short:"f" help:"Delete existing project first"`
+	Filter      []string      `short:"F" name:"filter" help:"Filter URLs by regex (repeatable)"`
+	Concurrency int           `short:"c" default:"3" help:"Concurrent fetch limit"`
+	Timeout     time.Duration `short:"t" default:"10s" help:"Fetch timeout per page"`
+	Debug       bool          `short:"d" help:"Show debug information"`
 }
 
 // ListCmd is the "list" subcommand.

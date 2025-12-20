@@ -36,7 +36,7 @@ type Fetcher struct {
 type Option func(*Fetcher)
 
 // WithFetchTimeout sets the timeout for page navigation and loading.
-// Defaults to 30 seconds if not specified.
+// Defaults to DefaultFetchTimeout (10s) if not specified.
 func WithFetchTimeout(d time.Duration) Option {
 	return func(f *Fetcher) {
 		f.fetchTimeout = d
