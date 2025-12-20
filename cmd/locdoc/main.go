@@ -11,6 +11,7 @@ import (
 	"github.com/fwojciec/locdoc"
 	"github.com/fwojciec/locdoc/crawl"
 	"github.com/fwojciec/locdoc/gemini"
+	"github.com/fwojciec/locdoc/goquery"
 	"github.com/fwojciec/locdoc/htmltomarkdown"
 	lochttp "github.com/fwojciec/locdoc/http"
 	"github.com/fwojciec/locdoc/rod"
@@ -122,19 +123,30 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		}
 		defer fetcher.Close()
 
-		tokenCounter, err := gemini.NewTokenCounter(defaultModel)
+		tokenCounter, err := gemini.NewTokenCounter(tokenizerModel)
 		if err != nil {
 			return fmt.Errorf("failed to create token counter: %w", err)
 		}
 
+		// Create link selector registry for recursive crawling fallback
+		detector := goquery.NewDetector()
+		fallbackSelector := goquery.NewGenericSelector()
+		linkSelectors := goquery.NewRegistry(detector, fallbackSelector)
+		registerFrameworkSelectors(linkSelectors)
+
+		// Create rate limiter for recursive crawling (1 request per second per domain)
+		rateLimiter := crawl.NewDomainLimiter(1.0)
+
 		deps.Crawler = &crawl.Crawler{
-			Sitemaps:     deps.Sitemaps,
-			Fetcher:      fetcher,
-			Extractor:    trafilatura.NewExtractor(),
-			Converter:    htmltomarkdown.NewConverter(),
-			Documents:    m.DocumentService,
-			TokenCounter: tokenCounter,
-			Concurrency:  cli.Add.Concurrency,
+			Sitemaps:      deps.Sitemaps,
+			Fetcher:       fetcher,
+			Extractor:     trafilatura.NewExtractor(),
+			Converter:     htmltomarkdown.NewConverter(),
+			Documents:     m.DocumentService,
+			TokenCounter:  tokenCounter,
+			LinkSelectors: linkSelectors,
+			RateLimiter:   rateLimiter,
+			Concurrency:   cli.Add.Concurrency,
 		}
 	}
 
@@ -162,6 +174,11 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 
 const defaultModel = "gemini-3-flash-preview"
 
+// tokenizerModel is used for token counting. Using gemini-2.5-flash until
+// gemini-3-flash-preview is supported by google.golang.org/genai/tokenizer.
+// Track: locdoc-okw
+const tokenizerModel = "gemini-2.5-flash"
+
 func defaultDBPath() string {
 	if path := os.Getenv("LOCDOC_DB"); path != "" {
 		return path
@@ -173,4 +190,14 @@ func defaultDBPath() string {
 	dir := filepath.Join(home, ".locdoc")
 	_ = os.MkdirAll(dir, 0755)
 	return filepath.Join(dir, "locdoc.db")
+}
+
+// registerFrameworkSelectors registers all framework-specific link selectors with the registry.
+func registerFrameworkSelectors(registry locdoc.LinkSelectorRegistry) {
+	registry.Register(locdoc.FrameworkDocusaurus, goquery.NewDocusaurusSelector())
+	registry.Register(locdoc.FrameworkMkDocs, goquery.NewMkDocsSelector())
+	registry.Register(locdoc.FrameworkSphinx, goquery.NewSphinxSelector())
+	registry.Register(locdoc.FrameworkVuePress, goquery.NewVuePressSelector())
+	registry.Register(locdoc.FrameworkGitBook, goquery.NewGitBookSelector())
+	registry.Register(locdoc.FrameworkNextra, goquery.NewNextraSelector())
 }

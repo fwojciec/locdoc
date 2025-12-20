@@ -196,6 +196,7 @@ func (s *SitemapService) parseSitemapsFromRobots(ctx context.Context, robotsURL 
 }
 
 // processSitemap fetches and parses a sitemap, handling both urlset and sitemapindex.
+// Returns empty slice (not error) if the sitemap doesn't exist (404) to allow fallback.
 func (s *SitemapService) processSitemap(ctx context.Context, sitemapURL string, seen map[string]bool) ([]string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -209,7 +210,16 @@ func (s *SitemapService) processSitemap(ctx context.Context, sitemapURL string, 
 
 	body, err := s.fetchURL(ctx, sitemapURL)
 	if err != nil {
-		return nil, err
+		// Propagate context cancellation errors.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		// Treat HTTP 404 as "sitemap doesn't exist" (empty URLs) to enable recursive crawling fallback.
+		// Other errors (network errors, server errors) are propagated.
+		if strings.Contains(err.Error(), "HTTP 404") {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("fetching sitemap %s: %w", sitemapURL, err)
 	}
 	defer body.Close()
 
