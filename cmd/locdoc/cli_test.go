@@ -5,12 +5,55 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/alecthomas/kong"
 	main "github.com/fwojciec/locdoc/cmd/locdoc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAddCmd_TimeoutFlag(t *testing.T) {
+	t.Parallel()
+
+	cli := &main.CLI{}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	parser, err := kong.New(cli,
+		kong.Writers(stdout, stderr),
+		kong.Exit(func(int) {}),
+	)
+	require.NoError(t, err)
+
+	// Parse add command with --timeout flag
+	_, err = parser.Parse([]string{"add", "--timeout", "30s", "myproject", "https://example.com"})
+	require.NoError(t, err)
+
+	// Verify the timeout was parsed correctly
+	assert.Equal(t, 30*time.Second, cli.Add.Timeout)
+}
+
+func TestAddCmd_TimeoutFlagDefault(t *testing.T) {
+	t.Parallel()
+
+	cli := &main.CLI{}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	parser, err := kong.New(cli,
+		kong.Writers(stdout, stderr),
+		kong.Exit(func(int) {}),
+	)
+	require.NoError(t, err)
+
+	// Parse add command without --timeout flag
+	_, err = parser.Parse([]string{"add", "myproject", "https://example.com"})
+	require.NoError(t, err)
+
+	// Verify the default timeout is 10 seconds
+	assert.Equal(t, 10*time.Second, cli.Add.Timeout)
+}
 
 func TestCLI_HelpShowsAllCommands(t *testing.T) {
 	t.Parallel()

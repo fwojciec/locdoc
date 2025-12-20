@@ -117,7 +117,7 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 
 	// Wire command-specific dependencies based on command
 	if cmd == "add" {
-		fetcher, err := rod.NewFetcher()
+		fetcher, err := rod.NewFetcher(rod.WithFetchTimeout(cli.Add.Timeout))
 		if err != nil {
 			fmt.Fprintln(stderr, "Hint: Chrome or Chromium must be installed")
 			return fmt.Errorf("failed to start browser: %w", err)
