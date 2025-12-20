@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -136,6 +137,14 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		deps.Fetcher = fetcher
 		deps.LinkSelectors = linkSelectors
 		deps.RateLimiter = rateLimiter
+
+		// Wrap services with logging decorators when debug is enabled
+		if cli.Add.Debug {
+			logger := slog.New(slog.NewTextHandler(stderr, nil))
+			deps.Sitemaps = lochttp.NewLoggingSitemapService(deps.Sitemaps, logger)
+			deps.Fetcher = rod.NewLoggingFetcher(deps.Fetcher, logger)
+			deps.LinkSelectors = goquery.NewLoggingRegistry(deps.LinkSelectors, detector, logger)
+		}
 
 		// Wire full Crawler only for non-preview mode
 		if !cli.Add.Preview {

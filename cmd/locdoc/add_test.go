@@ -3,13 +3,17 @@ package main_test
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/fwojciec/locdoc"
 	main "github.com/fwojciec/locdoc/cmd/locdoc"
 	"github.com/fwojciec/locdoc/crawl"
+	"github.com/fwojciec/locdoc/goquery"
+	lochttp "github.com/fwojciec/locdoc/http"
 	"github.com/fwojciec/locdoc/mock"
+	"github.com/fwojciec/locdoc/rod"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -452,6 +456,117 @@ func TestAddCmd_Run(t *testing.T) {
 		assert.Contains(t, output, "https://example.com/docs/page1")
 		assert.Contains(t, output, "https://example.com/docs/page2")
 		assert.Contains(t, output, "https://example.com/docs/page3")
+	})
+
+	t.Run("debug mode logs progress to stderr", func(t *testing.T) {
+		t.Parallel()
+
+		sitemaps := &mock.SitemapService{
+			DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
+				return []string{}, nil // Empty sitemap triggers recursive discovery
+			},
+		}
+
+		fetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, url string) (string, error) {
+				return `<html><body><nav><a href="/docs/page1">Page 1</a></nav></body></html>`, nil
+			},
+		}
+
+		detector := &mock.FrameworkDetector{
+			DetectFn: func(html string) locdoc.Framework {
+				return locdoc.FrameworkDocusaurus
+			},
+		}
+
+		linkSelectors := &mock.LinkSelectorRegistry{
+			GetForHTMLFn: func(html string) locdoc.LinkSelector {
+				return &mock.LinkSelector{
+					ExtractLinksFn: func(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
+						return nil, nil // No links to follow
+					},
+					NameFn: func() string { return "test" },
+				}
+			},
+		}
+
+		rateLimiter := &mock.DomainLimiter{
+			WaitFn: func(_ context.Context, _ string) error {
+				return nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		// Create logger writing to stderr (like main.go does when --debug is set)
+		logger := slog.New(slog.NewTextHandler(stderr, nil))
+
+		// Wrap services with logging decorators (simulating main.go wiring when Debug=true)
+		loggingSitemaps := lochttp.NewLoggingSitemapService(sitemaps, logger)
+		loggingFetcher := rod.NewLoggingFetcher(fetcher, logger)
+		loggingRegistry := goquery.NewLoggingRegistry(linkSelectors, detector, logger)
+
+		deps := &main.Dependencies{
+			Ctx:           context.Background(),
+			Stdout:        stdout,
+			Stderr:        stderr,
+			Sitemaps:      loggingSitemaps,
+			Fetcher:       loggingFetcher,
+			LinkSelectors: loggingRegistry,
+			RateLimiter:   rateLimiter,
+		}
+
+		cmd := &main.AddCmd{
+			Name:    "testdocs",
+			URL:     "https://example.com/docs/",
+			Preview: true,
+		}
+
+		err := cmd.Run(deps)
+
+		require.NoError(t, err)
+
+		// Verify debug logs appear in stderr
+		stderrOutput := stderr.String()
+		assert.Contains(t, stderrOutput, "sitemap discovery", "should log sitemap discovery")
+		assert.Contains(t, stderrOutput, "fetch", "should log page fetches")
+		assert.Contains(t, stderrOutput, "framework detection", "should log framework detection")
+		assert.Contains(t, stderrOutput, "duration=", "should log timing information")
+	})
+
+	t.Run("without debug mode stderr remains quiet", func(t *testing.T) {
+		t.Parallel()
+
+		sitemaps := &mock.SitemapService{
+			DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
+				return []string{"https://example.com/docs/page1"}, nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		// No logging decorators - simulating Debug=false
+		deps := &main.Dependencies{
+			Ctx:      context.Background(),
+			Stdout:   stdout,
+			Stderr:   stderr,
+			Sitemaps: sitemaps,
+		}
+
+		cmd := &main.AddCmd{
+			Name:    "testdocs",
+			URL:     "https://example.com/docs",
+			Preview: true,
+		}
+
+		err := cmd.Run(deps)
+
+		require.NoError(t, err)
+
+		// Stderr should be empty (no debug logs)
+		assert.Empty(t, stderr.String(), "stderr should be empty without debug mode")
 	})
 
 	t.Run("prints failures on separate lines to stderr", func(t *testing.T) {
