@@ -59,9 +59,15 @@ func NewBrowserManager(opts ...ManagerOption) (*BrowserManager, error) {
 // Browser returns the current browser instance, recycling if the page count
 // has reached maxPages. Callers should call IncrementPageCount after using
 // the browser to process a page.
+// Returns nil if the manager has been closed.
 func (bm *BrowserManager) Browser() *rod.Browser {
 	bm.mu.Lock()
 	defer bm.mu.Unlock()
+
+	// Don't recycle or return browser if closed
+	if bm.closed.Load() {
+		return nil
+	}
 
 	if atomic.LoadInt64(&bm.pageCount) >= bm.maxPages {
 		bm.recycleBrowser()
