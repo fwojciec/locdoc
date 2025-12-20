@@ -433,3 +433,76 @@ func TestDetector_Detect(t *testing.T) {
 		assert.Equal(t, locdoc.FrameworkUnknown, framework)
 	})
 }
+
+func TestDetector_RequiresJS(t *testing.T) {
+	t.Parallel()
+
+	d := goquery.NewDetector()
+
+	// Framework that requires JavaScript rendering
+	t.Run("GitBook requires JS", func(t *testing.T) {
+		t.Parallel()
+
+		requires, known := d.RequiresJS(locdoc.FrameworkGitBook)
+		assert.True(t, requires, "GitBook should require JS")
+		assert.True(t, known, "GitBook should be a known framework")
+	})
+
+	// Frameworks that do NOT require JavaScript rendering
+	t.Run("Sphinx does not require JS", func(t *testing.T) {
+		t.Parallel()
+
+		requires, known := d.RequiresJS(locdoc.FrameworkSphinx)
+		assert.False(t, requires, "Sphinx should not require JS")
+		assert.True(t, known, "Sphinx should be a known framework")
+	})
+
+	t.Run("MkDocs does not require JS", func(t *testing.T) {
+		t.Parallel()
+
+		requires, known := d.RequiresJS(locdoc.FrameworkMkDocs)
+		assert.False(t, requires, "MkDocs should not require JS")
+		assert.True(t, known, "MkDocs should be a known framework")
+	})
+
+	t.Run("Docusaurus does not require JS", func(t *testing.T) {
+		t.Parallel()
+
+		requires, known := d.RequiresJS(locdoc.FrameworkDocusaurus)
+		assert.False(t, requires, "Docusaurus should not require JS")
+		assert.True(t, known, "Docusaurus should be a known framework")
+	})
+
+	t.Run("VitePress does not require JS", func(t *testing.T) {
+		t.Parallel()
+
+		requires, known := d.RequiresJS(locdoc.FrameworkVitePress)
+		assert.False(t, requires, "VitePress should not require JS")
+		assert.True(t, known, "VitePress should be a known framework")
+	})
+
+	t.Run("Nextra does not require JS", func(t *testing.T) {
+		t.Parallel()
+
+		requires, known := d.RequiresJS(locdoc.FrameworkNextra)
+		assert.False(t, requires, "Nextra should not require JS")
+		assert.True(t, known, "Nextra should be a known framework")
+	})
+
+	t.Run("VuePress does not require JS", func(t *testing.T) {
+		t.Parallel()
+
+		requires, known := d.RequiresJS(locdoc.FrameworkVuePress)
+		assert.False(t, requires, "VuePress should not require JS")
+		assert.True(t, known, "VuePress should be a known framework")
+	})
+
+	// Unknown framework
+	t.Run("FrameworkUnknown returns known=false", func(t *testing.T) {
+		t.Parallel()
+
+		requires, known := d.RequiresJS(locdoc.FrameworkUnknown)
+		assert.False(t, requires, "Unknown framework should not require JS")
+		assert.False(t, known, "Unknown framework should have known=false")
+	})
+}
