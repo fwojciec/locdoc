@@ -15,6 +15,90 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// newTestCrawler creates a Crawler with sensible test defaults.
+// All mocks return minimal successful responses by default.
+// Use the returned mocks struct to customize behavior for specific tests.
+func newTestCrawler() (*crawl.Crawler, *testMocks) {
+	m := &testMocks{
+		Sitemaps: &mock.SitemapService{
+			DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
+				return []string{}, nil
+			},
+		},
+		Fetcher: &mock.Fetcher{
+			FetchFn: func(_ context.Context, _ string) (string, error) {
+				return `<html><body><p>Content</p></body></html>`, nil
+			},
+		},
+		Extractor: &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{
+					Title:       "Test",
+					ContentHTML: "<p>Content</p>",
+				}, nil
+			},
+		},
+		Converter: &mock.Converter{
+			ConvertFn: func(_ string) (string, error) {
+				return "Content", nil
+			},
+		},
+		Documents: &mock.DocumentService{
+			CreateDocumentFn: func(_ context.Context, _ *locdoc.Document) error {
+				return nil
+			},
+		},
+		TokenCounter: &mock.TokenCounter{
+			CountTokensFn: func(_ context.Context, _ string) (int, error) {
+				return 1, nil
+			},
+		},
+		LinkSelectors: &mock.LinkSelectorRegistry{
+			GetForHTMLFn: func(_ string) locdoc.LinkSelector {
+				return &mock.LinkSelector{
+					ExtractLinksFn: func(_ string, _ string) ([]locdoc.DiscoveredLink, error) {
+						return nil, nil
+					},
+					NameFn: func() string { return "test" },
+				}
+			},
+		},
+		RateLimiter: &mock.DomainLimiter{
+			WaitFn: func(_ context.Context, _ string) error {
+				return nil
+			},
+		},
+	}
+
+	c := &crawl.Crawler{
+		Sitemaps:      m.Sitemaps,
+		Fetcher:       m.Fetcher,
+		Extractor:     m.Extractor,
+		Converter:     m.Converter,
+		Documents:     m.Documents,
+		TokenCounter:  m.TokenCounter,
+		LinkSelectors: m.LinkSelectors,
+		RateLimiter:   m.RateLimiter,
+		Concurrency:   1,
+		RetryDelays:   []time.Duration{0},
+	}
+
+	return c, m
+}
+
+// testMocks holds references to all mocks used by newTestCrawler.
+// Tests can modify the function fields to customize behavior.
+type testMocks struct {
+	Sitemaps      *mock.SitemapService
+	Fetcher       *mock.Fetcher
+	Extractor     *mock.Extractor
+	Converter     *mock.Converter
+	Documents     *mock.DocumentService
+	TokenCounter  *mock.TokenCounter
+	LinkSelectors *mock.LinkSelectorRegistry
+	RateLimiter   *mock.DomainLimiter
+}
+
 func TestCrawler_CrawlProject(t *testing.T) {
 	t.Parallel()
 
@@ -149,63 +233,23 @@ func TestCrawler_CrawlProject(t *testing.T) {
 
 		var savedURLs []string
 
-		c := &crawl.Crawler{
-			Sitemaps: &mock.SitemapService{
-				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
-					return []string{}, nil
-				},
-			},
-			Fetcher: &mock.Fetcher{
-				FetchFn: func(_ context.Context, url string) (string, error) {
-					return `<html><body><p>Content</p></body></html>`, nil
-				},
-			},
-			Extractor: &mock.Extractor{
-				ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
-					return &locdoc.ExtractResult{
-						Title:       "Test",
-						ContentHTML: "<p>Content</p>",
+		c, m := newTestCrawler()
+		m.Documents.CreateDocumentFn = func(_ context.Context, doc *locdoc.Document) error {
+			savedURLs = append(savedURLs, doc.SourceURL)
+			return nil
+		}
+		m.LinkSelectors.GetForHTMLFn = func(_ string) locdoc.LinkSelector {
+			return &mock.LinkSelector{
+				ExtractLinksFn: func(_ string, _ string) ([]locdoc.DiscoveredLink, error) {
+					// Return links - one in scope, one out of scope
+					return []locdoc.DiscoveredLink{
+						{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
+						{URL: "https://example.com/other/page", Priority: locdoc.PriorityNavigation}, // out of scope
+						{URL: "https://other.com/docs/page", Priority: locdoc.PriorityNavigation},    // different host
 					}, nil
 				},
-			},
-			Converter: &mock.Converter{
-				ConvertFn: func(_ string) (string, error) {
-					return "Content", nil
-				},
-			},
-			Documents: &mock.DocumentService{
-				CreateDocumentFn: func(_ context.Context, doc *locdoc.Document) error {
-					savedURLs = append(savedURLs, doc.SourceURL)
-					return nil
-				},
-			},
-			TokenCounter: &mock.TokenCounter{
-				CountTokensFn: func(_ context.Context, _ string) (int, error) {
-					return 1, nil
-				},
-			},
-			LinkSelectors: &mock.LinkSelectorRegistry{
-				GetForHTMLFn: func(html string) locdoc.LinkSelector {
-					return &mock.LinkSelector{
-						ExtractLinksFn: func(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
-							// Return links - one in scope, one out of scope
-							return []locdoc.DiscoveredLink{
-								{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
-								{URL: "https://example.com/other/page", Priority: locdoc.PriorityNavigation}, // out of scope
-								{URL: "https://other.com/docs/page", Priority: locdoc.PriorityNavigation},    // different host
-							}, nil
-						},
-						NameFn: func() string { return "test" },
-					}
-				},
-			},
-			RateLimiter: &mock.DomainLimiter{
-				WaitFn: func(_ context.Context, _ string) error {
-					return nil
-				},
-			},
-			Concurrency: 1,
-			RetryDelays: []time.Duration{0},
+				NameFn: func() string { return "test" },
+			}
 		}
 
 		project := &locdoc.Project{
@@ -234,58 +278,10 @@ func TestCrawler_CrawlProject(t *testing.T) {
 
 		var waitCalls []string
 
-		c := &crawl.Crawler{
-			Sitemaps: &mock.SitemapService{
-				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
-					return []string{}, nil
-				},
-			},
-			Fetcher: &mock.Fetcher{
-				FetchFn: func(_ context.Context, _ string) (string, error) {
-					return `<html><body><p>Content</p></body></html>`, nil
-				},
-			},
-			Extractor: &mock.Extractor{
-				ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
-					return &locdoc.ExtractResult{
-						Title:       "Test",
-						ContentHTML: "<p>Content</p>",
-					}, nil
-				},
-			},
-			Converter: &mock.Converter{
-				ConvertFn: func(_ string) (string, error) {
-					return "Content", nil
-				},
-			},
-			Documents: &mock.DocumentService{
-				CreateDocumentFn: func(_ context.Context, doc *locdoc.Document) error {
-					return nil
-				},
-			},
-			TokenCounter: &mock.TokenCounter{
-				CountTokensFn: func(_ context.Context, _ string) (int, error) {
-					return 1, nil
-				},
-			},
-			LinkSelectors: &mock.LinkSelectorRegistry{
-				GetForHTMLFn: func(html string) locdoc.LinkSelector {
-					return &mock.LinkSelector{
-						ExtractLinksFn: func(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
-							return nil, nil // No more links
-						},
-						NameFn: func() string { return "test" },
-					}
-				},
-			},
-			RateLimiter: &mock.DomainLimiter{
-				WaitFn: func(_ context.Context, domain string) error {
-					waitCalls = append(waitCalls, domain)
-					return nil
-				},
-			},
-			Concurrency: 1,
-			RetryDelays: []time.Duration{0},
+		c, m := newTestCrawler()
+		m.RateLimiter.WaitFn = func(_ context.Context, domain string) error {
+			waitCalls = append(waitCalls, domain)
+			return nil
 		}
 
 		project := &locdoc.Project{
@@ -306,62 +302,22 @@ func TestCrawler_CrawlProject(t *testing.T) {
 
 		var savedURLs []string
 
-		c := &crawl.Crawler{
-			Sitemaps: &mock.SitemapService{
-				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
-					return []string{}, nil
-				},
-			},
-			Fetcher: &mock.Fetcher{
-				FetchFn: func(_ context.Context, _ string) (string, error) {
-					return `<html><body><p>Content</p></body></html>`, nil
-				},
-			},
-			Extractor: &mock.Extractor{
-				ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
-					return &locdoc.ExtractResult{
-						Title:       "Test",
-						ContentHTML: "<p>Content</p>",
+		c, m := newTestCrawler()
+		m.Documents.CreateDocumentFn = func(_ context.Context, doc *locdoc.Document) error {
+			savedURLs = append(savedURLs, doc.SourceURL)
+			return nil
+		}
+		m.LinkSelectors.GetForHTMLFn = func(_ string) locdoc.LinkSelector {
+			return &mock.LinkSelector{
+				ExtractLinksFn: func(_ string, _ string) ([]locdoc.DiscoveredLink, error) {
+					// Return links - one matches filter, one doesn't
+					return []locdoc.DiscoveredLink{
+						{URL: "https://example.com/docs/guide/intro", Priority: locdoc.PriorityNavigation},
+						{URL: "https://example.com/docs/api/ref", Priority: locdoc.PriorityNavigation},
 					}, nil
 				},
-			},
-			Converter: &mock.Converter{
-				ConvertFn: func(_ string) (string, error) {
-					return "Content", nil
-				},
-			},
-			Documents: &mock.DocumentService{
-				CreateDocumentFn: func(_ context.Context, doc *locdoc.Document) error {
-					savedURLs = append(savedURLs, doc.SourceURL)
-					return nil
-				},
-			},
-			TokenCounter: &mock.TokenCounter{
-				CountTokensFn: func(_ context.Context, _ string) (int, error) {
-					return 1, nil
-				},
-			},
-			LinkSelectors: &mock.LinkSelectorRegistry{
-				GetForHTMLFn: func(html string) locdoc.LinkSelector {
-					return &mock.LinkSelector{
-						ExtractLinksFn: func(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
-							// Return links - one matches filter, one doesn't
-							return []locdoc.DiscoveredLink{
-								{URL: "https://example.com/docs/guide/intro", Priority: locdoc.PriorityNavigation},
-								{URL: "https://example.com/docs/api/ref", Priority: locdoc.PriorityNavigation},
-							}, nil
-						},
-						NameFn: func() string { return "test" },
-					}
-				},
-			},
-			RateLimiter: &mock.DomainLimiter{
-				WaitFn: func(_ context.Context, _ string) error {
-					return nil
-				},
-			},
-			Concurrency: 1,
-			RetryDelays: []time.Duration{0},
+				NameFn: func() string { return "test" },
+			}
 		}
 
 		project := &locdoc.Project{
@@ -391,67 +347,30 @@ func TestCrawler_CrawlProject(t *testing.T) {
 		fetchCount := 0
 		ctx, cancel := context.WithCancel(context.Background())
 
-		c := &crawl.Crawler{
-			Sitemaps: &mock.SitemapService{
-				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
-					return []string{}, nil
-				},
-			},
-			Fetcher: &mock.Fetcher{
-				FetchFn: func(_ context.Context, _ string) (string, error) {
-					fetchCount++
-					return `<html><body><p>Content</p></body></html>`, nil
-				},
-			},
-			Extractor: &mock.Extractor{
-				ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
-					return &locdoc.ExtractResult{
-						Title:       "Test",
-						ContentHTML: "<p>Content</p>",
+		c, m := newTestCrawler()
+		m.Fetcher.FetchFn = func(_ context.Context, _ string) (string, error) {
+			fetchCount++
+			return `<html><body><p>Content</p></body></html>`, nil
+		}
+		m.LinkSelectors.GetForHTMLFn = func(_ string) locdoc.LinkSelector {
+			return &mock.LinkSelector{
+				ExtractLinksFn: func(_ string, _ string) ([]locdoc.DiscoveredLink, error) {
+					// Return many links to ensure there's work queued
+					return []locdoc.DiscoveredLink{
+						{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
+						{URL: "https://example.com/docs/page2", Priority: locdoc.PriorityNavigation},
+						{URL: "https://example.com/docs/page3", Priority: locdoc.PriorityNavigation},
 					}, nil
 				},
-			},
-			Converter: &mock.Converter{
-				ConvertFn: func(_ string) (string, error) {
-					return "Content", nil
-				},
-			},
-			Documents: &mock.DocumentService{
-				CreateDocumentFn: func(_ context.Context, doc *locdoc.Document) error {
-					return nil
-				},
-			},
-			TokenCounter: &mock.TokenCounter{
-				CountTokensFn: func(_ context.Context, _ string) (int, error) {
-					return 1, nil
-				},
-			},
-			LinkSelectors: &mock.LinkSelectorRegistry{
-				GetForHTMLFn: func(html string) locdoc.LinkSelector {
-					return &mock.LinkSelector{
-						ExtractLinksFn: func(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
-							// Return many links to ensure there's work queued
-							return []locdoc.DiscoveredLink{
-								{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
-								{URL: "https://example.com/docs/page2", Priority: locdoc.PriorityNavigation},
-								{URL: "https://example.com/docs/page3", Priority: locdoc.PriorityNavigation},
-							}, nil
-						},
-						NameFn: func() string { return "test" },
-					}
-				},
-			},
-			RateLimiter: &mock.DomainLimiter{
-				WaitFn: func(ctx context.Context, _ string) error {
-					// Cancel after first URL is processed
-					if fetchCount >= 1 {
-						cancel()
-					}
-					return ctx.Err()
-				},
-			},
-			Concurrency: 1,
-			RetryDelays: []time.Duration{0},
+				NameFn: func() string { return "test" },
+			}
+		}
+		m.RateLimiter.WaitFn = func(ctx context.Context, _ string) error {
+			// Cancel after first URL is processed
+			if fetchCount >= 1 {
+				cancel()
+			}
+			return ctx.Err()
 		}
 
 		project := &locdoc.Project{
@@ -474,43 +393,29 @@ func TestCrawler_CrawlProject(t *testing.T) {
 		t.Parallel()
 
 		var savedDoc *locdoc.Document
-		c := &crawl.Crawler{
-			Sitemaps: &mock.SitemapService{
-				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
-					return []string{"https://example.com/page1"}, nil
-				},
-			},
-			Fetcher: &mock.Fetcher{
-				FetchFn: func(_ context.Context, url string) (string, error) {
-					return "<html><body>Test content</body></html>", nil
-				},
-			},
-			Extractor: &mock.Extractor{
-				ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
-					return &locdoc.ExtractResult{
-						Title:       "Test Page",
-						ContentHTML: "<p>Test content</p>",
-					}, nil
-				},
-			},
-			Converter: &mock.Converter{
-				ConvertFn: func(_ string) (string, error) {
-					return "Test content", nil
-				},
-			},
-			Documents: &mock.DocumentService{
-				CreateDocumentFn: func(_ context.Context, doc *locdoc.Document) error {
-					savedDoc = doc
-					return nil
-				},
-			},
-			TokenCounter: &mock.TokenCounter{
-				CountTokensFn: func(_ context.Context, text string) (int, error) {
-					return len(text) / 4, nil // ~4 chars per token
-				},
-			},
-			Concurrency: 1,
-			RetryDelays: []time.Duration{0},
+
+		c, m := newTestCrawler()
+		m.Sitemaps.DiscoverURLsFn = func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
+			return []string{"https://example.com/page1"}, nil
+		}
+		m.Fetcher.FetchFn = func(_ context.Context, _ string) (string, error) {
+			return "<html><body>Test content</body></html>", nil
+		}
+		m.Extractor.ExtractFn = func(_ string) (*locdoc.ExtractResult, error) {
+			return &locdoc.ExtractResult{
+				Title:       "Test Page",
+				ContentHTML: "<p>Test content</p>",
+			}, nil
+		}
+		m.Converter.ConvertFn = func(_ string) (string, error) {
+			return "Test content", nil
+		}
+		m.Documents.CreateDocumentFn = func(_ context.Context, doc *locdoc.Document) error {
+			savedDoc = doc
+			return nil
+		}
+		m.TokenCounter.CountTokensFn = func(_ context.Context, text string) (int, error) {
+			return len(text) / 4, nil // ~4 chars per token
 		}
 
 		project := &locdoc.Project{
@@ -541,45 +446,27 @@ func TestCrawler_CrawlProject(t *testing.T) {
 	t.Run("counts failed URLs when fetch fails", func(t *testing.T) {
 		t.Parallel()
 
-		c := &crawl.Crawler{
-			Sitemaps: &mock.SitemapService{
-				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
-					return []string{"https://example.com/page1", "https://example.com/page2"}, nil
-				},
-			},
-			Fetcher: &mock.Fetcher{
-				FetchFn: func(_ context.Context, url string) (string, error) {
-					if url == "https://example.com/page1" {
-						return "", locdoc.Errorf(locdoc.EINTERNAL, "fetch failed")
-					}
-					return "<html><body>Page 2</body></html>", nil
-				},
-			},
-			Extractor: &mock.Extractor{
-				ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
-					return &locdoc.ExtractResult{
-						Title:       "Page 2",
-						ContentHTML: "<p>Page 2 content</p>",
-					}, nil
-				},
-			},
-			Converter: &mock.Converter{
-				ConvertFn: func(_ string) (string, error) {
-					return "Page 2 content", nil
-				},
-			},
-			Documents: &mock.DocumentService{
-				CreateDocumentFn: func(_ context.Context, doc *locdoc.Document) error {
-					return nil
-				},
-			},
-			TokenCounter: &mock.TokenCounter{
-				CountTokensFn: func(_ context.Context, text string) (int, error) {
-					return len(text) / 4, nil
-				},
-			},
-			Concurrency: 1,
-			RetryDelays: []time.Duration{0}, // no retry delay for tests
+		c, m := newTestCrawler()
+		m.Sitemaps.DiscoverURLsFn = func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
+			return []string{"https://example.com/page1", "https://example.com/page2"}, nil
+		}
+		m.Fetcher.FetchFn = func(_ context.Context, url string) (string, error) {
+			if url == "https://example.com/page1" {
+				return "", locdoc.Errorf(locdoc.EINTERNAL, "fetch failed")
+			}
+			return "<html><body>Page 2</body></html>", nil
+		}
+		m.Extractor.ExtractFn = func(_ string) (*locdoc.ExtractResult, error) {
+			return &locdoc.ExtractResult{
+				Title:       "Page 2",
+				ContentHTML: "<p>Page 2 content</p>",
+			}, nil
+		}
+		m.Converter.ConvertFn = func(_ string) (string, error) {
+			return "Page 2 content", nil
+		}
+		m.TokenCounter.CountTokensFn = func(_ context.Context, text string) (int, error) {
+			return len(text) / 4, nil
 		}
 
 		project := &locdoc.Project{
@@ -600,47 +487,21 @@ func TestCrawler_CrawlProject(t *testing.T) {
 		t.Parallel()
 
 		createCallCount := 0
-		c := &crawl.Crawler{
-			Sitemaps: &mock.SitemapService{
-				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
-					return []string{"https://example.com/page1", "https://example.com/page2"}, nil
-				},
-			},
-			Fetcher: &mock.Fetcher{
-				FetchFn: func(_ context.Context, _ string) (string, error) {
-					return "<html><body>Content</body></html>", nil
-				},
-			},
-			Extractor: &mock.Extractor{
-				ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
-					return &locdoc.ExtractResult{
-						Title:       "Page",
-						ContentHTML: "<p>Content</p>",
-					}, nil
-				},
-			},
-			Converter: &mock.Converter{
-				ConvertFn: func(_ string) (string, error) {
-					return "Content", nil
-				},
-			},
-			Documents: &mock.DocumentService{
-				CreateDocumentFn: func(_ context.Context, doc *locdoc.Document) error {
-					createCallCount++
-					// Fail on first document, succeed on second
-					if doc.SourceURL == "https://example.com/page1" {
-						return locdoc.Errorf(locdoc.EINTERNAL, "database error")
-					}
-					return nil
-				},
-			},
-			TokenCounter: &mock.TokenCounter{
-				CountTokensFn: func(_ context.Context, text string) (int, error) {
-					return len(text) / 4, nil
-				},
-			},
-			Concurrency: 1,
-			RetryDelays: []time.Duration{0},
+
+		c, m := newTestCrawler()
+		m.Sitemaps.DiscoverURLsFn = func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
+			return []string{"https://example.com/page1", "https://example.com/page2"}, nil
+		}
+		m.Fetcher.FetchFn = func(_ context.Context, _ string) (string, error) {
+			return "<html><body>Content</body></html>", nil
+		}
+		m.Documents.CreateDocumentFn = func(_ context.Context, doc *locdoc.Document) error {
+			createCallCount++
+			// Fail on first document, succeed on second
+			if doc.SourceURL == "https://example.com/page1" {
+				return locdoc.Errorf(locdoc.EINTERNAL, "database error")
+			}
+			return nil
 		}
 
 		project := &locdoc.Project{
@@ -661,42 +522,21 @@ func TestCrawler_CrawlProject(t *testing.T) {
 	t.Run("calls progress callback with events", func(t *testing.T) {
 		t.Parallel()
 
-		c := &crawl.Crawler{
-			Sitemaps: &mock.SitemapService{
-				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
-					return []string{"https://example.com/page1"}, nil
-				},
-			},
-			Fetcher: &mock.Fetcher{
-				FetchFn: func(_ context.Context, _ string) (string, error) {
-					return "<html><body>Test</body></html>", nil
-				},
-			},
-			Extractor: &mock.Extractor{
-				ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
-					return &locdoc.ExtractResult{
-						Title:       "Test",
-						ContentHTML: "<p>Test</p>",
-					}, nil
-				},
-			},
-			Converter: &mock.Converter{
-				ConvertFn: func(_ string) (string, error) {
-					return "Test", nil
-				},
-			},
-			Documents: &mock.DocumentService{
-				CreateDocumentFn: func(_ context.Context, _ *locdoc.Document) error {
-					return nil
-				},
-			},
-			TokenCounter: &mock.TokenCounter{
-				CountTokensFn: func(_ context.Context, _ string) (int, error) {
-					return 1, nil
-				},
-			},
-			Concurrency: 1,
-			RetryDelays: []time.Duration{0},
+		c, m := newTestCrawler()
+		m.Sitemaps.DiscoverURLsFn = func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
+			return []string{"https://example.com/page1"}, nil
+		}
+		m.Fetcher.FetchFn = func(_ context.Context, _ string) (string, error) {
+			return "<html><body>Test</body></html>", nil
+		}
+		m.Extractor.ExtractFn = func(_ string) (*locdoc.ExtractResult, error) {
+			return &locdoc.ExtractResult{
+				Title:       "Test",
+				ContentHTML: "<p>Test</p>",
+			}, nil
+		}
+		m.Converter.ConvertFn = func(_ string) (string, error) {
+			return "Test", nil
 		}
 
 		project := &locdoc.Project{
@@ -733,65 +573,25 @@ func TestCrawler_CrawlProject(t *testing.T) {
 	t.Run("recursive crawl reports completed count in progress events", func(t *testing.T) {
 		t.Parallel()
 
-		c := &crawl.Crawler{
-			Sitemaps: &mock.SitemapService{
-				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
-					return []string{}, nil // No sitemap, triggers recursive crawl
-				},
-			},
-			Fetcher: &mock.Fetcher{
-				FetchFn: func(_ context.Context, url string) (string, error) {
-					if url == "https://example.com/docs/" {
-						return `<html><body><nav><a href="/docs/page1">Page 1</a></nav><p>Content</p></body></html>`, nil
+		c, m := newTestCrawler()
+		m.Fetcher.FetchFn = func(_ context.Context, url string) (string, error) {
+			if url == "https://example.com/docs/" {
+				return `<html><body><nav><a href="/docs/page1">Page 1</a></nav><p>Content</p></body></html>`, nil
+			}
+			return `<html><body><p>Page content</p></body></html>`, nil
+		}
+		m.LinkSelectors.GetForHTMLFn = func(_ string) locdoc.LinkSelector {
+			return &mock.LinkSelector{
+				ExtractLinksFn: func(_ string, baseURL string) ([]locdoc.DiscoveredLink, error) {
+					if baseURL == "https://example.com/docs/" {
+						return []locdoc.DiscoveredLink{
+							{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
+						}, nil
 					}
-					return `<html><body><p>Page content</p></body></html>`, nil
+					return nil, nil
 				},
-			},
-			Extractor: &mock.Extractor{
-				ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
-					return &locdoc.ExtractResult{
-						Title:       "Test",
-						ContentHTML: "<p>Content</p>",
-					}, nil
-				},
-			},
-			Converter: &mock.Converter{
-				ConvertFn: func(_ string) (string, error) {
-					return "Content", nil
-				},
-			},
-			Documents: &mock.DocumentService{
-				CreateDocumentFn: func(_ context.Context, _ *locdoc.Document) error {
-					return nil
-				},
-			},
-			TokenCounter: &mock.TokenCounter{
-				CountTokensFn: func(_ context.Context, _ string) (int, error) {
-					return 1, nil
-				},
-			},
-			LinkSelectors: &mock.LinkSelectorRegistry{
-				GetForHTMLFn: func(html string) locdoc.LinkSelector {
-					return &mock.LinkSelector{
-						ExtractLinksFn: func(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
-							if baseURL == "https://example.com/docs/" {
-								return []locdoc.DiscoveredLink{
-									{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
-								}, nil
-							}
-							return nil, nil
-						},
-						NameFn: func() string { return "test" },
-					}
-				},
-			},
-			RateLimiter: &mock.DomainLimiter{
-				WaitFn: func(_ context.Context, _ string) error {
-					return nil
-				},
-			},
-			Concurrency: 1,
-			RetryDelays: []time.Duration{0},
+				NameFn: func() string { return "test" },
+			}
 		}
 
 		project := &locdoc.Project{
@@ -833,66 +633,6 @@ func TestCrawler_CrawlProject(t *testing.T) {
 		lastEvent := events[len(events)-1]
 		assert.Equal(t, crawl.ProgressFinished, lastEvent.Type, "last event should be Finished")
 	})
-}
-
-func TestProgressType_Constants(t *testing.T) {
-	t.Parallel()
-
-	// Verify constants are defined and have expected order
-	assert.Equal(t, crawl.ProgressStarted, crawl.ProgressType(0))
-	assert.Equal(t, crawl.ProgressCompleted, crawl.ProgressType(1))
-	assert.Equal(t, crawl.ProgressFailed, crawl.ProgressType(2))
-	assert.Equal(t, crawl.ProgressFinished, crawl.ProgressType(3))
-}
-
-func TestResult_Fields(t *testing.T) {
-	t.Parallel()
-
-	// Verify Result struct has expected fields
-	r := crawl.Result{
-		Saved:  10,
-		Failed: 2,
-		Bytes:  1024,
-		Tokens: 500,
-	}
-
-	assert.Equal(t, 10, r.Saved)
-	assert.Equal(t, 2, r.Failed)
-	assert.Equal(t, 1024, r.Bytes)
-	assert.Equal(t, 500, r.Tokens)
-}
-
-func TestProgressEvent_Fields(t *testing.T) {
-	t.Parallel()
-
-	// Verify ProgressEvent struct has expected fields
-	testErr := locdoc.Errorf(locdoc.EINTERNAL, "test error")
-	e := crawl.ProgressEvent{
-		Type:      crawl.ProgressFailed,
-		Completed: 5,
-		Total:     10,
-		URL:       "https://example.com/page",
-		Error:     testErr,
-	}
-
-	assert.Equal(t, crawl.ProgressFailed, e.Type)
-	assert.Equal(t, 5, e.Completed)
-	assert.Equal(t, 10, e.Total)
-	assert.Equal(t, "https://example.com/page", e.URL)
-	assert.Equal(t, testErr, e.Error)
-}
-
-func TestProgressFunc_Type(t *testing.T) {
-	t.Parallel()
-
-	// Verify ProgressFunc is callable
-	var called bool
-	var fn crawl.ProgressFunc = func(event crawl.ProgressEvent) {
-		called = true
-	}
-
-	fn(crawl.ProgressEvent{Type: crawl.ProgressStarted})
-	assert.True(t, called)
 }
 
 func TestTruncateURL(t *testing.T) {
@@ -1277,81 +1017,42 @@ func TestRecursiveCrawl_Concurrency(t *testing.T) {
 		const numPages = 10
 		const concurrency = 3
 
-		c := &crawl.Crawler{
-			Sitemaps: &mock.SitemapService{
-				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
-					return []string{}, nil // Trigger recursive crawl
-				},
-			},
-			Fetcher: &mock.Fetcher{
-				FetchFn: func(_ context.Context, url string) (string, error) {
-					// Track concurrent fetches using atomic compare-and-swap for max
-					current := currentConcurrent.Add(1)
-					for {
-						max := maxConcurrent.Load()
-						if current <= max || maxConcurrent.CompareAndSwap(max, current) {
-							break
+		c, m := newTestCrawler()
+		c.Concurrency = concurrency
+		m.Fetcher.FetchFn = func(_ context.Context, _ string) (string, error) {
+			// Track concurrent fetches using atomic compare-and-swap for max
+			current := currentConcurrent.Add(1)
+			for {
+				max := maxConcurrent.Load()
+				if current <= max || maxConcurrent.CompareAndSwap(max, current) {
+					break
+				}
+			}
+
+			// Simulate work to allow concurrency to build up
+			time.Sleep(50 * time.Millisecond)
+
+			currentConcurrent.Add(-1)
+			return `<html><body><p>Content</p></body></html>`, nil
+		}
+		m.LinkSelectors.GetForHTMLFn = func(_ string) locdoc.LinkSelector {
+			return &mock.LinkSelector{
+				ExtractLinksFn: func(_ string, baseURL string) ([]locdoc.DiscoveredLink, error) {
+					// Only the seed page discovers links
+					if baseURL == "https://example.com/docs/" {
+						var links []locdoc.DiscoveredLink
+						for i := 1; i <= numPages; i++ {
+							links = append(links, locdoc.DiscoveredLink{
+								URL:      fmt.Sprintf("https://example.com/docs/page%d", i),
+								Priority: locdoc.PriorityNavigation,
+							})
 						}
+						return links, nil
 					}
-
-					// Simulate work to allow concurrency to build up
-					time.Sleep(50 * time.Millisecond)
-
-					currentConcurrent.Add(-1)
-					return `<html><body><p>Content</p></body></html>`, nil
+					return nil, nil
 				},
-			},
-			Extractor: &mock.Extractor{
-				ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
-					return &locdoc.ExtractResult{
-						Title:       "Test",
-						ContentHTML: "<p>Content</p>",
-					}, nil
-				},
-			},
-			Converter: &mock.Converter{
-				ConvertFn: func(_ string) (string, error) {
-					return "Content", nil
-				},
-			},
-			Documents: &mock.DocumentService{
-				CreateDocumentFn: func(_ context.Context, _ *locdoc.Document) error {
-					return nil
-				},
-			},
-			TokenCounter: &mock.TokenCounter{
-				CountTokensFn: func(_ context.Context, _ string) (int, error) {
-					return 1, nil
-				},
-			},
-			LinkSelectors: &mock.LinkSelectorRegistry{
-				GetForHTMLFn: func(html string) locdoc.LinkSelector {
-					return &mock.LinkSelector{
-						ExtractLinksFn: func(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
-							// Only the seed page discovers links
-							if baseURL == "https://example.com/docs/" {
-								var links []locdoc.DiscoveredLink
-								for i := 1; i <= numPages; i++ {
-									links = append(links, locdoc.DiscoveredLink{
-										URL:      fmt.Sprintf("https://example.com/docs/page%d", i),
-										Priority: locdoc.PriorityNavigation,
-									})
-								}
-								return links, nil
-							}
-							return nil, nil
-						},
-						NameFn: func() string { return "test" },
-					}
-				},
-			},
-			RateLimiter: &mock.DomainLimiter{
-				WaitFn: func(_ context.Context, _ string) error {
-					return nil
-				},
-			},
-			Concurrency: concurrency,
-			RetryDelays: []time.Duration{0},
+				NameFn: func() string { return "test" },
+			}
 		}
 
 		project := &locdoc.Project{
@@ -1378,67 +1079,28 @@ func TestRecursiveCrawl_Concurrency(t *testing.T) {
 
 		var fetchCount atomic.Int32
 
-		c := &crawl.Crawler{
-			Sitemaps: &mock.SitemapService{
-				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
-					return []string{}, nil // Trigger recursive crawl
-				},
-			},
-			Fetcher: &mock.Fetcher{
-				FetchFn: func(_ context.Context, _ string) (string, error) {
-					fetchCount.Add(1)
-					return `<html><body><p>Content</p></body></html>`, nil
-				},
-			},
-			Extractor: &mock.Extractor{
-				ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
-					return &locdoc.ExtractResult{
-						Title:       "Test",
-						ContentHTML: "<p>Content</p>",
-					}, nil
-				},
-			},
-			Converter: &mock.Converter{
-				ConvertFn: func(_ string) (string, error) {
-					return "Content", nil
-				},
-			},
-			Documents: &mock.DocumentService{
-				CreateDocumentFn: func(_ context.Context, _ *locdoc.Document) error {
-					return nil
-				},
-			},
-			TokenCounter: &mock.TokenCounter{
-				CountTokensFn: func(_ context.Context, _ string) (int, error) {
-					return 1, nil
-				},
-			},
-			LinkSelectors: &mock.LinkSelectorRegistry{
-				GetForHTMLFn: func(html string) locdoc.LinkSelector {
-					return &mock.LinkSelector{
-						ExtractLinksFn: func(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
-							// Always return more links than the max URL limit
-							// This would cause infinite crawling without the limit
-							var links []locdoc.DiscoveredLink
-							for i := 0; i < 100; i++ {
-								links = append(links, locdoc.DiscoveredLink{
-									URL:      fmt.Sprintf("https://example.com/docs/page%d_%d", fetchCount.Load(), i),
-									Priority: locdoc.PriorityNavigation,
-								})
-							}
-							return links, nil
-						},
-						NameFn: func() string { return "test" },
+		c, m := newTestCrawler()
+		c.Concurrency = 5
+		m.Fetcher.FetchFn = func(_ context.Context, _ string) (string, error) {
+			fetchCount.Add(1)
+			return `<html><body><p>Content</p></body></html>`, nil
+		}
+		m.LinkSelectors.GetForHTMLFn = func(_ string) locdoc.LinkSelector {
+			return &mock.LinkSelector{
+				ExtractLinksFn: func(_ string, _ string) ([]locdoc.DiscoveredLink, error) {
+					// Always return more links than the max URL limit
+					// This would cause infinite crawling without the limit
+					var links []locdoc.DiscoveredLink
+					for i := 0; i < 100; i++ {
+						links = append(links, locdoc.DiscoveredLink{
+							URL:      fmt.Sprintf("https://example.com/docs/page%d_%d", fetchCount.Load(), i),
+							Priority: locdoc.PriorityNavigation,
+						})
 					}
+					return links, nil
 				},
-			},
-			RateLimiter: &mock.DomainLimiter{
-				WaitFn: func(_ context.Context, _ string) error {
-					return nil
-				},
-			},
-			Concurrency: 5,
-			RetryDelays: []time.Duration{0},
+				NameFn: func() string { return "test" },
+			}
 		}
 
 		project := &locdoc.Project{
@@ -1465,65 +1127,26 @@ func TestRecursiveCrawl_Concurrency(t *testing.T) {
 
 		var waitCalls atomic.Int32
 
-		c := &crawl.Crawler{
-			Sitemaps: &mock.SitemapService{
-				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
-					return []string{}, nil
-				},
-			},
-			Fetcher: &mock.Fetcher{
-				FetchFn: func(_ context.Context, _ string) (string, error) {
-					return `<html><body><p>Content</p></body></html>`, nil
-				},
-			},
-			Extractor: &mock.Extractor{
-				ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
-					return &locdoc.ExtractResult{
-						Title:       "Test",
-						ContentHTML: "<p>Content</p>",
-					}, nil
-				},
-			},
-			Converter: &mock.Converter{
-				ConvertFn: func(_ string) (string, error) {
-					return "Content", nil
-				},
-			},
-			Documents: &mock.DocumentService{
-				CreateDocumentFn: func(_ context.Context, _ *locdoc.Document) error {
-					return nil
-				},
-			},
-			TokenCounter: &mock.TokenCounter{
-				CountTokensFn: func(_ context.Context, _ string) (int, error) {
-					return 1, nil
-				},
-			},
-			LinkSelectors: &mock.LinkSelectorRegistry{
-				GetForHTMLFn: func(html string) locdoc.LinkSelector {
-					return &mock.LinkSelector{
-						ExtractLinksFn: func(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
-							if baseURL == "https://example.com/docs/" {
-								return []locdoc.DiscoveredLink{
-									{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
-									{URL: "https://example.com/docs/page2", Priority: locdoc.PriorityNavigation},
-									{URL: "https://example.com/docs/page3", Priority: locdoc.PriorityNavigation},
-								}, nil
-							}
-							return nil, nil
-						},
-						NameFn: func() string { return "test" },
+		c, m := newTestCrawler()
+		c.Concurrency = 3
+		m.LinkSelectors.GetForHTMLFn = func(_ string) locdoc.LinkSelector {
+			return &mock.LinkSelector{
+				ExtractLinksFn: func(_ string, baseURL string) ([]locdoc.DiscoveredLink, error) {
+					if baseURL == "https://example.com/docs/" {
+						return []locdoc.DiscoveredLink{
+							{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
+							{URL: "https://example.com/docs/page2", Priority: locdoc.PriorityNavigation},
+							{URL: "https://example.com/docs/page3", Priority: locdoc.PriorityNavigation},
+						}, nil
 					}
+					return nil, nil
 				},
-			},
-			RateLimiter: &mock.DomainLimiter{
-				WaitFn: func(_ context.Context, domain string) error {
-					waitCalls.Add(1)
-					return nil
-				},
-			},
-			Concurrency: 3,
-			RetryDelays: []time.Duration{0},
+				NameFn: func() string { return "test" },
+			}
+		}
+		m.RateLimiter.WaitFn = func(_ context.Context, _ string) error {
+			waitCalls.Add(1)
+			return nil
 		}
 
 		project := &locdoc.Project{
