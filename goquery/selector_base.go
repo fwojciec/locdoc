@@ -114,8 +114,11 @@ func resolveURL(base *url.URL, href string) string {
 	resolved.Fragment = "" // Strip fragment for deduplication
 
 	// Filter self-referential links (e.g., anchor-only links pointing to same page)
+	// Compare against base URL with fragment stripped for defensive correctness
 	result := resolved.String()
-	if result == base.String() {
+	baseNoFragment := *base
+	baseNoFragment.Fragment = ""
+	if result == baseNoFragment.String() {
 		return ""
 	}
 	return result
