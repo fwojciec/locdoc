@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -458,6 +459,93 @@ func TestAddCmd_Run(t *testing.T) {
 		assert.Contains(t, output, "https://example.com/docs/page3")
 	})
 
+	t.Run("preview mode streams URLs as they are discovered", func(t *testing.T) {
+		t.Parallel()
+
+		sitemaps := &mock.SitemapService{
+			DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
+				return []string{}, nil // Empty sitemap triggers recursive discovery
+			},
+		}
+
+		// Track URLs printed - streaming means each URL is printed exactly once (during discovery)
+		var printedURLs []string
+		var mu sync.Mutex
+
+		stdout := &streamCapture{
+			onWrite: func(s string) {
+				mu.Lock()
+				defer mu.Unlock()
+				// Each URL is printed on its own line
+				lines := bytes.Split([]byte(s), []byte("\n"))
+				for _, line := range lines {
+					if len(line) > 0 {
+						printedURLs = append(printedURLs, string(line))
+					}
+				}
+			},
+		}
+
+		fetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, url string) (string, error) {
+				return `<html><body></body></html>`, nil
+			},
+		}
+
+		linkSelectors := &mock.LinkSelectorRegistry{
+			GetForHTMLFn: func(html string) locdoc.LinkSelector {
+				return &mock.LinkSelector{
+					ExtractLinksFn: func(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
+						if baseURL == "https://example.com/docs/" {
+							return []locdoc.DiscoveredLink{
+								{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
+								{URL: "https://example.com/docs/page2", Priority: locdoc.PriorityNavigation},
+							}, nil
+						}
+						return nil, nil
+					},
+					NameFn: func() string { return "test" },
+				}
+			},
+		}
+
+		rateLimiter := &mock.DomainLimiter{
+			WaitFn: func(_ context.Context, _ string) error {
+				return nil
+			},
+		}
+
+		deps := &main.Dependencies{
+			Ctx:           context.Background(),
+			Stdout:        stdout,
+			Stderr:        &bytes.Buffer{},
+			Sitemaps:      sitemaps,
+			Fetcher:       fetcher,
+			LinkSelectors: linkSelectors,
+			RateLimiter:   rateLimiter,
+		}
+
+		cmd := &main.AddCmd{
+			Name:    "testdocs",
+			URL:     "https://example.com/docs/",
+			Preview: true,
+		}
+
+		err := cmd.Run(deps)
+
+		require.NoError(t, err)
+		// URLs should be streamed (printed as discovered), not batched at the end
+		// With streaming, source URL should be printed ONCE (during discovery)
+		// not twice (once during discovery, once at end)
+		sourceCount := 0
+		for _, u := range printedURLs {
+			if u == "https://example.com/docs/" {
+				sourceCount++
+			}
+		}
+		assert.Equal(t, 1, sourceCount, "source URL should be printed exactly once (streaming), not twice (batch)")
+	})
+
 	t.Run("debug mode logs progress to stderr", func(t *testing.T) {
 		t.Parallel()
 
@@ -656,4 +744,14 @@ func TestAddCmd_Run(t *testing.T) {
 		stdoutOutput := stdout.String()
 		assert.Contains(t, stdoutOutput, "Saved 2 pages", "summary should show 2 saved pages")
 	})
+}
+
+// streamCapture is a writer that captures each write and calls a callback.
+type streamCapture struct {
+	onWrite func(string)
+}
+
+func (s *streamCapture) Write(p []byte) (n int, err error) {
+	s.onWrite(string(p))
+	return len(p), nil
 }
