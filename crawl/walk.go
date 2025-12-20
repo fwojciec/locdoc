@@ -60,7 +60,7 @@ func (c *Crawler) walkFrontier(
 	// Set up concurrency
 	concurrency := c.Concurrency
 	if concurrency <= 0 {
-		concurrency = 10
+		concurrency = 3
 	}
 
 	// Channels for worker coordination
