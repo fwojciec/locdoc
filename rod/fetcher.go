@@ -46,8 +46,18 @@ func WithFetchTimeout(d time.Duration) Option {
 //
 // Returns an error if Chrome/Chromium cannot be found or launched.
 func NewFetcher(opts ...Option) (*Fetcher, error) {
-	// Launch browser using rod's launcher (finds or downloads Chrome)
-	lnchr := launcher.New().Headless(true)
+	// Launch browser using rod's launcher (finds or downloads Chrome).
+	// Chrome aggressively throttles "background" tabs during concurrent operations,
+	// causing lifecycle events to fire with massive delays or not at all.
+	// See docs/go-rod-reliability.md for full context.
+	lnchr := launcher.New().
+		Set("disable-background-timer-throttling").    // Prevents timer delays in background tabs
+		Set("disable-backgrounding-occluded-windows"). // Prevents deprioritizing hidden tabs
+		Set("disable-renderer-backgrounding").         // Keeps all renderers at full priority
+		Set("disable-dev-shm-usage").                  // Uses /tmp instead of /dev/shm (essential for Docker)
+		Set("disable-hang-monitor").                   // Prevents killing "unresponsive" heavy pages
+		Leakless(true).                                // Auto-kill browser when Go process exits
+		Headless(true)
 	u, err := lnchr.Launch()
 	if err != nil {
 		return nil, fmt.Errorf("launching browser: %w", err)
