@@ -115,18 +115,13 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 	deps.Sitemaps = lochttp.NewSitemapService(nil)
 
 	// Wire command-specific dependencies based on command
-	if cmd == "add" && !cli.Add.Preview {
+	if cmd == "add" {
 		fetcher, err := rod.NewFetcher()
 		if err != nil {
 			fmt.Fprintln(stderr, "Hint: Chrome or Chromium must be installed")
 			return fmt.Errorf("failed to start browser: %w", err)
 		}
 		defer fetcher.Close()
-
-		tokenCounter, err := gemini.NewTokenCounter(tokenizerModel)
-		if err != nil {
-			return fmt.Errorf("failed to create token counter: %w", err)
-		}
 
 		// Create link selector registry for recursive crawling fallback
 		detector := goquery.NewDetector()
@@ -137,16 +132,29 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		// Create rate limiter for recursive crawling (1 request per second per domain)
 		rateLimiter := crawl.NewDomainLimiter(1.0)
 
-		deps.Crawler = &crawl.Crawler{
-			Sitemaps:      deps.Sitemaps,
-			Fetcher:       fetcher,
-			Extractor:     trafilatura.NewExtractor(),
-			Converter:     htmltomarkdown.NewConverter(),
-			Documents:     m.DocumentService,
-			TokenCounter:  tokenCounter,
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			Concurrency:   cli.Add.Concurrency,
+		// Wire discovery dependencies for preview mode (recursive fallback)
+		deps.Fetcher = fetcher
+		deps.LinkSelectors = linkSelectors
+		deps.RateLimiter = rateLimiter
+
+		// Wire full Crawler only for non-preview mode
+		if !cli.Add.Preview {
+			tokenCounter, err := gemini.NewTokenCounter(tokenizerModel)
+			if err != nil {
+				return fmt.Errorf("failed to create token counter: %w", err)
+			}
+
+			deps.Crawler = &crawl.Crawler{
+				Sitemaps:      deps.Sitemaps,
+				Fetcher:       fetcher,
+				Extractor:     trafilatura.NewExtractor(),
+				Converter:     htmltomarkdown.NewConverter(),
+				Documents:     m.DocumentService,
+				TokenCounter:  tokenCounter,
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				Concurrency:   cli.Add.Concurrency,
+			}
 		}
 	}
 

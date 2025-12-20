@@ -36,6 +36,16 @@ func (c *AddCmd) Run(deps *Dependencies) error {
 			fmt.Fprintf(deps.Stderr, "error: %s\n", locdoc.ErrorMessage(err))
 			return err
 		}
+
+		// Fall back to recursive discovery if sitemap returns no URLs
+		if len(urls) == 0 && deps.Fetcher != nil && deps.LinkSelectors != nil && deps.RateLimiter != nil {
+			urls, err = crawl.DiscoverURLs(deps.Ctx, c.URL, urlFilter, deps.Fetcher, deps.LinkSelectors, deps.RateLimiter)
+			if err != nil {
+				fmt.Fprintf(deps.Stderr, "error: %s\n", locdoc.ErrorMessage(err))
+				return err
+			}
+		}
+
 		for _, u := range urls {
 			fmt.Fprintln(deps.Stdout, u)
 		}

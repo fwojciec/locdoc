@@ -20,6 +20,11 @@ type Dependencies struct {
 	Sitemaps  locdoc.SitemapService
 	Crawler   *crawl.Crawler
 	Asker     locdoc.Asker
+	// Fetcher, LinkSelectors, and RateLimiter support recursive URL discovery
+	// in preview mode when sitemap is unavailable.
+	Fetcher       locdoc.Fetcher
+	LinkSelectors locdoc.LinkSelectorRegistry
+	RateLimiter   locdoc.DomainLimiter
 }
 
 // CLI defines the command-line interface structure for Kong.
