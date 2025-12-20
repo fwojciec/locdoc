@@ -87,14 +87,25 @@ func (c *AddCmd) Run(deps *Dependencies) error {
 				fmt.Fprintf(deps.Stdout, "  Found %d URLs\n", event.Total)
 			case crawl.ProgressCompleted:
 				// Update progress line in place
-				fmt.Fprintf(deps.Stdout, "\r  [%d/%d] %s",
-					event.Completed, total, crawl.TruncateURL(event.URL, 40))
+				// Show [N/M] when total is known, [N] when total is unknown (recursive crawl)
+				if total > 0 {
+					fmt.Fprintf(deps.Stdout, "\r  [%d/%d] %s",
+						event.Completed, total, crawl.TruncateURL(event.URL, 40))
+				} else {
+					fmt.Fprintf(deps.Stdout, "\r  [%d] %s",
+						event.Completed, crawl.TruncateURL(event.URL, 40))
+				}
 			case crawl.ProgressFailed:
 				// Print failure on its own line (persists in scroll history)
 				fmt.Fprintf(deps.Stderr, "  skip %s: %v\n", event.URL, event.Error)
 				// Update progress line after failure message
-				fmt.Fprintf(deps.Stdout, "\r  [%d/%d] %s",
-					event.Completed, total, crawl.TruncateURL(event.URL, 40))
+				if total > 0 {
+					fmt.Fprintf(deps.Stdout, "\r  [%d/%d] %s",
+						event.Completed, total, crawl.TruncateURL(event.URL, 40))
+				} else {
+					fmt.Fprintf(deps.Stdout, "\r  [%d] %s",
+						event.Completed, crawl.TruncateURL(event.URL, 40))
+				}
 			case crawl.ProgressFinished:
 				// Clear progress line
 				fmt.Fprintf(deps.Stdout, "\r%s\r", strings.Repeat(" ", 80))

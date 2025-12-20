@@ -296,7 +296,8 @@ func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, u
 
 	var result Result
 	position := 0
-	processedCount := 0
+	processedCount := 0 // Track attempts for safety limit (maxRecursiveCrawlURLs)
+	completedCount := 0 // Track completed (success + failure) for progress reporting
 
 	// Process URLs from frontier
 	for {
@@ -337,11 +338,13 @@ func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, u
 		html, err := FetchWithRetryDelays(ctx, link.URL, fetchFn, nil, delays)
 		if err != nil {
 			result.Failed++
+			completedCount++
 			if progress != nil {
 				progress(ProgressEvent{
-					Type:  ProgressFailed,
-					URL:   link.URL,
-					Error: err,
+					Type:      ProgressFailed,
+					Completed: completedCount,
+					URL:       link.URL,
+					Error:     err,
 				})
 			}
 			continue
@@ -375,11 +378,13 @@ func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, u
 		extracted, err := c.Extractor.Extract(html)
 		if err != nil {
 			result.Failed++
+			completedCount++
 			if progress != nil {
 				progress(ProgressEvent{
-					Type:  ProgressFailed,
-					URL:   link.URL,
-					Error: err,
+					Type:      ProgressFailed,
+					Completed: completedCount,
+					URL:       link.URL,
+					Error:     err,
 				})
 			}
 			continue
@@ -389,11 +394,13 @@ func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, u
 		markdown, err := c.Converter.Convert(extracted.ContentHTML)
 		if err != nil {
 			result.Failed++
+			completedCount++
 			if progress != nil {
 				progress(ProgressEvent{
-					Type:  ProgressFailed,
-					URL:   link.URL,
-					Error: err,
+					Type:      ProgressFailed,
+					Completed: completedCount,
+					URL:       link.URL,
+					Error:     err,
 				})
 			}
 			continue
@@ -412,6 +419,7 @@ func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, u
 
 		if err := c.Documents.CreateDocument(ctx, doc); err != nil {
 			result.Failed++
+			completedCount++
 			continue
 		}
 
@@ -423,10 +431,12 @@ func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, u
 			}
 		}
 
+		completedCount++
 		if progress != nil {
 			progress(ProgressEvent{
-				Type: ProgressCompleted,
-				URL:  link.URL,
+				Type:      ProgressCompleted,
+				Completed: completedCount,
+				URL:       link.URL,
 			})
 		}
 	}
