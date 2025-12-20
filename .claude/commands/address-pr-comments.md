@@ -12,9 +12,13 @@ Git status: !`git status --short`
 
 ### 1. Fetch PR Comments
 
-Get the PR number for the current branch:
+Get repo and PR info:
 ```bash
-gh pr view --json number -q '.number'
+# Get owner/repo (for API calls)
+REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
+
+# Get PR number
+PR_NUM=$(gh pr view --json number -q '.number')
 ```
 
 Fetch all comments (both review comments and inline/code comments):
@@ -22,8 +26,8 @@ Fetch all comments (both review comments and inline/code comments):
 # General PR comments
 gh pr view --comments
 
-# Inline code review comments
-gh api repos/{owner}/{repo}/pulls/{pr_number}/comments
+# Inline code review comments (note: {owner}/{repo} auto-substitutes)
+gh api repos/{owner}/{repo}/pulls/$PR_NUM/comments
 ```
 
 ### 2. Present Summary
@@ -61,15 +65,18 @@ For changes you decide to make:
 
 ### 5. Respond Inline
 
-For EVERY comment, respond inline on the PR using:
+For EVERY inline code review comment, reply using the `/replies` endpoint:
 ```bash
-gh api repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies \
+# Note: {owner}/{repo} auto-substitutes, but $PR_NUM and $COMMENT_ID must be real values
+gh api repos/{owner}/{repo}/pulls/$PR_NUM/comments/$COMMENT_ID/replies \
   -f body="Your response"
 ```
 
-Or for general PR comments:
+**Important**: The `$COMMENT_ID` must be the numeric `id` field from the comment JSON (e.g., `2637288064`), not a placeholder.
+
+For general PR comments (not inline code comments):
 ```bash
-gh pr comment {pr_number} --body "Your response"
+gh pr comment $PR_NUM --body "Your response"
 ```
 
 Response format for each comment:
