@@ -87,20 +87,18 @@ locdoc/
 
 ## Writing Issues
 
-Issues should be easy to complete. Include three elements:
+Issues should be easy to complete. Always include a description when creating:
 
-**Template**:
-```
-## Problem
-[What needs to be fixed/added - high level description]
+```bash
+bd create "Title" -p P2 -t task --description "## Problem
+[What needs to be fixed/added]
 
 ## Entrypoints
 - [File or function where work starts]
-- [Related files if known]
 
 ## Validation
 - [ ] Specific testable outcome
-- [ ] `make validate` passes
+- [ ] make validate passes"
 ```
 
 **Principles**:
