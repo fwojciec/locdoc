@@ -43,7 +43,7 @@ type AddCmd struct {
 	Preview     bool     `short:"p" help:"Show URLs without creating project"`
 	Force       bool     `short:"f" help:"Delete existing project first"`
 	Filter      []string `short:"F" name:"filter" help:"Filter URLs by regex (repeatable)"`
-	Concurrency int      `short:"c" default:"10" help:"Concurrent fetch limit"`
+	Concurrency int      `short:"c" default:"3" help:"Concurrent fetch limit"`
 	Debug       bool     `short:"d" help:"Show debug information"`
 }
 
