@@ -29,6 +29,59 @@ func TestFrontier_Push_rejects_duplicate_URLs(t *testing.T) {
 	assert.False(t, ok, "duplicate URL should be rejected")
 }
 
+func TestFrontier_Push_deduplicates_URLs_with_different_fragments(t *testing.T) {
+	t.Parallel()
+
+	f := crawl.NewFrontier(1000, 0.01)
+
+	// First push without fragment should succeed
+	ok := f.Push(locdoc.DiscoveredLink{
+		URL:      "https://example.com/docs/overview",
+		Priority: locdoc.PriorityNavigation,
+	})
+	assert.True(t, ok, "first push should succeed")
+
+	// Push of same URL with fragment should be rejected as duplicate
+	ok = f.Push(locdoc.DiscoveredLink{
+		URL:      "https://example.com/docs/overview#motivation",
+		Priority: locdoc.PriorityNavigation,
+	})
+	assert.False(t, ok, "URL with fragment should be rejected as duplicate of base URL")
+
+	// Push of same URL with different fragment should also be rejected
+	ok = f.Push(locdoc.DiscoveredLink{
+		URL:      "https://example.com/docs/overview#getting-started",
+		Priority: locdoc.PriorityNavigation,
+	})
+	assert.False(t, ok, "URL with different fragment should be rejected as duplicate")
+
+	// Queue should only have one URL
+	assert.Equal(t, 1, f.Len(), "should have exactly one URL in queue")
+
+	// The URL in the queue should be the base URL without fragment
+	link, ok := f.Pop()
+	assert.True(t, ok)
+	assert.Equal(t, "https://example.com/docs/overview", link.URL, "URL should be stored without fragment")
+}
+
+func TestFrontier_Push_strips_fragment_from_first_URL(t *testing.T) {
+	t.Parallel()
+
+	f := crawl.NewFrontier(1000, 0.01)
+
+	// First push with fragment should succeed but store without fragment
+	ok := f.Push(locdoc.DiscoveredLink{
+		URL:      "https://example.com/docs/overview#section",
+		Priority: locdoc.PriorityNavigation,
+	})
+	assert.True(t, ok, "first push should succeed")
+
+	// The URL in the queue should be without fragment
+	link, ok := f.Pop()
+	assert.True(t, ok)
+	assert.Equal(t, "https://example.com/docs/overview", link.URL, "URL should be stored without fragment")
+}
+
 func TestFrontier_Pop_returns_highest_priority_first(t *testing.T) {
 	t.Parallel()
 
@@ -97,6 +150,87 @@ func TestFrontier_Seen_tracks_all_pushed_URLs(t *testing.T) {
 	// Pop the URL - it should still be seen
 	f.Pop()
 	assert.True(t, f.Seen("https://example.com/page"), "popped URL should still be seen")
+}
+
+func TestFrontier_Seen_ignores_fragments(t *testing.T) {
+	t.Parallel()
+
+	f := crawl.NewFrontier(1000, 0.01)
+
+	// Push URL without fragment
+	f.Push(locdoc.DiscoveredLink{URL: "https://example.com/page", Priority: locdoc.PriorityContent})
+
+	// Seen should return true for URL with fragment
+	assert.True(t, f.Seen("https://example.com/page#section"), "URL with fragment should be seen if base URL was pushed")
+
+	// Push URL with fragment
+	f2 := crawl.NewFrontier(1000, 0.01)
+	f2.Push(locdoc.DiscoveredLink{URL: "https://example.com/page#section", Priority: locdoc.PriorityContent})
+
+	// Seen should return true for URL without fragment
+	assert.True(t, f2.Seen("https://example.com/page"), "base URL should be seen if URL with fragment was pushed")
+}
+
+func TestFrontier_fragment_edge_cases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("handles URL with empty fragment", func(t *testing.T) {
+		t.Parallel()
+
+		f := crawl.NewFrontier(1000, 0.01)
+
+		// URL with empty fragment should be treated as base URL
+		ok := f.Push(locdoc.DiscoveredLink{URL: "https://example.com/page#", Priority: locdoc.PriorityContent})
+		assert.True(t, ok)
+
+		// Should be stored without the trailing #
+		link, ok := f.Pop()
+		assert.True(t, ok)
+		assert.Equal(t, "https://example.com/page", link.URL)
+	})
+
+	t.Run("handles URL with multiple hash characters", func(t *testing.T) {
+		t.Parallel()
+
+		f := crawl.NewFrontier(1000, 0.01)
+
+		// Only the first # should be the fragment delimiter
+		// "page#a#b" should become "page"
+		ok := f.Push(locdoc.DiscoveredLink{URL: "https://example.com/page#section#subsection", Priority: locdoc.PriorityContent})
+		assert.True(t, ok)
+
+		link, ok := f.Pop()
+		assert.True(t, ok)
+		assert.Equal(t, "https://example.com/page", link.URL)
+	})
+
+	t.Run("handles fragment with special characters", func(t *testing.T) {
+		t.Parallel()
+
+		f := crawl.NewFrontier(1000, 0.01)
+
+		// Fragment with special characters should be stripped
+		ok := f.Push(locdoc.DiscoveredLink{URL: "https://example.com/page#section%20with%20spaces", Priority: locdoc.PriorityContent})
+		assert.True(t, ok)
+
+		link, ok := f.Pop()
+		assert.True(t, ok)
+		assert.Equal(t, "https://example.com/page", link.URL)
+	})
+
+	t.Run("preserves query params when stripping fragment", func(t *testing.T) {
+		t.Parallel()
+
+		f := crawl.NewFrontier(1000, 0.01)
+
+		// Query params should be preserved, only fragment stripped
+		ok := f.Push(locdoc.DiscoveredLink{URL: "https://example.com/page?q=test#section", Priority: locdoc.PriorityContent})
+		assert.True(t, ok)
+
+		link, ok := f.Pop()
+		assert.True(t, ok)
+		assert.Equal(t, "https://example.com/page?q=test", link.URL)
+	})
 }
 
 func TestFrontier_concurrent_access(t *testing.T) {

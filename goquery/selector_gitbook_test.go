@@ -53,18 +53,19 @@ func TestGitBookSelector_ExtractLinks(t *testing.T) {
 	t.Run("extracts links from page.desktopTableOfContents with TOC priority", func(t *testing.T) {
 		t.Parallel()
 
+		// Use actual page paths for TOC links (not anchor-only which are self-referential)
 		html := `<!DOCTYPE html>
 <html>
 <head><title>GitBook</title></head>
 <body>
 <div data-testid="space.sidebar">
-	<nav><ul><li><a href="/docs/page">Page</a></li></ul></nav>
+	<nav><ul><li><a href="/docs/other">Other Page</a></li></ul></nav>
 </div>
 <div data-testid="page.desktopTableOfContents">
 	<nav>
 		<ul>
-			<li><a href="#section-1">Section 1</a></li>
-			<li><a href="#section-2">Section 2</a></li>
+			<li><a href="/docs/section-1">Section 1</a></li>
+			<li><a href="/docs/section-2">Section 2</a></li>
 		</ul>
 	</nav>
 </div>

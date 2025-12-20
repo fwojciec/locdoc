@@ -102,13 +102,26 @@ func (s *BaseSelector) ExtractLinks(html string, baseURL string) ([]locdoc.Disco
 }
 
 // resolveURL resolves a relative URL against a base URL.
-// Returns empty string if the href cannot be parsed.
+// Returns empty string if the href cannot be parsed or if the resolved URL
+// is self-referential (same as base URL after stripping fragment).
+// Fragments are stripped from the resolved URL for deduplication purposes.
 func resolveURL(base *url.URL, href string) string {
 	ref, err := url.Parse(href)
 	if err != nil {
 		return ""
 	}
-	return base.ResolveReference(ref).String()
+	resolved := base.ResolveReference(ref)
+	resolved.Fragment = "" // Strip fragment for deduplication
+
+	// Filter self-referential links (e.g., anchor-only links pointing to same page)
+	// Compare against base URL with fragment stripped for defensive correctness
+	result := resolved.String()
+	baseNoFragment := *base
+	baseNoFragment.Fragment = ""
+	if result == baseNoFragment.String() {
+		return ""
+	}
+	return result
 }
 
 // isSameHost checks if the resolved URL has the same host as the base URL.
