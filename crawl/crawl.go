@@ -687,8 +687,7 @@ func DiscoverURLs(
 		RateLimiter:   rateLimiter,
 	}
 
-	// Thread-safe collection of discovered URLs
-	var mu sync.Mutex
+	// Collected URLs (handleResult is called sequentially from coordinator)
 	var urls []string
 
 	// Discovery processor: fetch page and extract links (no content extraction)
@@ -749,9 +748,7 @@ func DiscoverURLs(
 
 		// Collect successfully fetched URLs
 		if result.err == nil {
-			mu.Lock()
 			urls = append(urls, result.url)
-			mu.Unlock()
 		}
 	}
 
