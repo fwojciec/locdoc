@@ -115,10 +115,10 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 		return "", err
 	}
 
-	// Wait for page to stabilize (combines WaitLoad, WaitRequestIdle, and WaitDOMStable).
-	// WaitStable is more reliable than WaitLoad in concurrent scenarios because if one
-	// event fails to fire, others can still complete and unblock execution.
-	if err := page.WaitStable(time.Second); err != nil {
+	// Wait for page to load. We use WaitLoad instead of WaitStable because WaitStable
+	// requires the DOM to be unchanged for the specified duration, which never happens
+	// on React/JS-heavy sites with continuous animations or state updates.
+	if err := page.WaitLoad(); err != nil {
 		f.closePageAndContext(page, incognito)
 		return "", err
 	}
