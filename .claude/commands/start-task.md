@@ -91,4 +91,25 @@ After implementation is complete:
 2. Address any issues that arise (linting, test failures, etc.)
 3. Iterate until validation passes
 
-Only proceed to `/finish-task` when `make validate` passes cleanly.
+Only proceed to step 8 when `make validate` passes cleanly.
+
+### 8. Self-Review
+
+Before finishing, get a fresh perspective on the implementation:
+
+1. Use `superpowers:requesting-code-review` to dispatch a review subagent
+   - The subagent runs in separate context, providing unbiased review
+   - Wait for findings to be returned
+
+2. Use `superpowers:receiving-code-review` to evaluate the feedback
+   - Apply critical technical judgment to each suggestion
+   - Not all feedback requires action - evaluate on merit
+   - Accept suggestions that improve correctness or clarity
+   - Push back on suggestions that are stylistic preferences or misunderstand context
+
+3. If changes are needed:
+   - Implement fixes (return to step 5 if substantial)
+   - Run `make validate` again
+   - Repeat self-review if changes were significant
+
+Only proceed to `/finish-task` when review is addressed and validation passes.
