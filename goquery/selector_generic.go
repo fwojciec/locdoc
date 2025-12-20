@@ -34,6 +34,7 @@ func (s *GenericSelector) Name() string {
 //   - Navigation: nav, [role="navigation"], .nav, .menu, .navbar
 //   - Content: main, article, .content, .doc-content
 //   - Footer: footer, .footer
+//   - Fallback: all a[href] (catches links in non-semantic HTML)
 func (s *GenericSelector) ExtractLinks(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
 	base, err := url.Parse(baseURL)
 	if err != nil {
