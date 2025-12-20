@@ -12,7 +12,9 @@ import (
 )
 
 // DefaultFetchTimeout is the default timeout for page navigation and loading.
-const DefaultFetchTimeout = 30 * time.Second
+// Kept short (10s) so stuck pages fail fast and retry quickly rather than
+// waiting 30s to discover a transient issue.
+const DefaultFetchTimeout = 10 * time.Second
 
 // Ensure Fetcher implements locdoc.Fetcher at compile time.
 var _ locdoc.Fetcher = (*Fetcher)(nil)
