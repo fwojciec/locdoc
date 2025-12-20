@@ -15,6 +15,7 @@ type DiscoverOption func(*discoverConfig)
 type discoverConfig struct {
 	concurrency int
 	retryDelays []time.Duration
+	onURL       func(string)
 }
 
 // WithConcurrency sets the number of concurrent workers for URL discovery.
@@ -30,6 +31,14 @@ func WithConcurrency(n int) DiscoverOption {
 func WithRetryDelays(delays []time.Duration) DiscoverOption {
 	return func(c *discoverConfig) {
 		c.retryDelays = delays
+	}
+}
+
+// WithOnURL sets a callback that is invoked for each URL as it is discovered.
+// This enables streaming output instead of waiting for all URLs to be collected.
+func WithOnURL(fn func(string)) DiscoverOption {
+	return func(c *discoverConfig) {
+		c.onURL = fn
 	}
 }
 
@@ -134,6 +143,9 @@ func DiscoverURLs(
 		// Collect successfully fetched URLs
 		if result.err == nil {
 			urls = append(urls, result.url)
+			if cfg.onURL != nil {
+				cfg.onURL(result.url)
+			}
 		}
 	}
 

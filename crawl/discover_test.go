@@ -488,4 +488,62 @@ func TestDiscoverURLs(t *testing.T) {
 		// Should stop early due to cancellation
 		assert.Empty(t, urls)
 	})
+
+	t.Run("calls OnURL callback for each discovered URL", func(t *testing.T) {
+		t.Parallel()
+
+		fetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, url string) (string, error) {
+				return `<html><body></body></html>`, nil
+			},
+		}
+
+		linkSelectors := &mock.LinkSelectorRegistry{
+			GetForHTMLFn: func(html string) locdoc.LinkSelector {
+				return &mock.LinkSelector{
+					ExtractLinksFn: func(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
+						if baseURL == "https://example.com/docs/" {
+							return []locdoc.DiscoveredLink{
+								{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
+								{URL: "https://example.com/docs/page2", Priority: locdoc.PriorityNavigation},
+							}, nil
+						}
+						return nil, nil
+					},
+					NameFn: func() string { return "test" },
+				}
+			},
+		}
+
+		rateLimiter := &mock.DomainLimiter{
+			WaitFn: func(_ context.Context, _ string) error {
+				return nil
+			},
+		}
+
+		// Track URLs as they are streamed
+		var streamedURLs []string
+		var mu sync.Mutex
+
+		urls, err := crawl.DiscoverURLs(
+			context.Background(),
+			"https://example.com/docs/",
+			nil,
+			fetcher,
+			linkSelectors,
+			rateLimiter,
+			crawl.WithOnURL(func(url string) {
+				mu.Lock()
+				streamedURLs = append(streamedURLs, url)
+				mu.Unlock()
+			}),
+		)
+
+		require.NoError(t, err)
+		assert.Len(t, urls, 3) // source + 2 pages
+		assert.Len(t, streamedURLs, 3)
+		assert.Contains(t, streamedURLs, "https://example.com/docs/")
+		assert.Contains(t, streamedURLs, "https://example.com/docs/page1")
+		assert.Contains(t, streamedURLs, "https://example.com/docs/page2")
+	})
 }

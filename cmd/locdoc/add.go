@@ -37,19 +37,28 @@ func (c *AddCmd) Run(deps *Dependencies) error {
 			return err
 		}
 
+		// Sitemap discovery returns URLs all at once, print them
+		if len(urls) > 0 {
+			for _, u := range urls {
+				fmt.Fprintln(deps.Stdout, u)
+			}
+			return nil
+		}
+
 		// Fall back to recursive discovery if sitemap returns no URLs
-		if len(urls) == 0 && deps.Fetcher != nil && deps.LinkSelectors != nil && deps.RateLimiter != nil {
-			urls, err = crawl.DiscoverURLs(deps.Ctx, c.URL, urlFilter, deps.Fetcher, deps.LinkSelectors, deps.RateLimiter,
-				crawl.WithConcurrency(c.Concurrency))
+		// Use streaming callback to print URLs as they're discovered
+		if deps.Fetcher != nil && deps.LinkSelectors != nil && deps.RateLimiter != nil {
+			_, err = crawl.DiscoverURLs(deps.Ctx, c.URL, urlFilter, deps.Fetcher, deps.LinkSelectors, deps.RateLimiter,
+				crawl.WithConcurrency(c.Concurrency),
+				crawl.WithOnURL(func(url string) {
+					fmt.Fprintln(deps.Stdout, url)
+				}))
 			if err != nil {
 				fmt.Fprintf(deps.Stderr, "error: %s\n", locdoc.ErrorMessage(err))
 				return err
 			}
 		}
 
-		for _, u := range urls {
-			fmt.Fprintln(deps.Stdout, u)
-		}
 		return nil
 	}
 
