@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"regexp"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1270,10 +1269,9 @@ func TestRecursiveCrawl_Concurrency(t *testing.T) {
 	t.Run("processes URLs in parallel with multiple workers", func(t *testing.T) {
 		t.Parallel()
 
-		// Track concurrent fetch count
-		var maxConcurrent int32
-		var currentConcurrent int32
-		var mu sync.Mutex
+		// Track concurrent fetch count using atomics to avoid data races
+		var maxConcurrent atomic.Int32
+		var currentConcurrent atomic.Int32
 
 		// Create enough URLs to see parallelism
 		const numPages = 10
@@ -1287,18 +1285,19 @@ func TestRecursiveCrawl_Concurrency(t *testing.T) {
 			},
 			Fetcher: &mock.Fetcher{
 				FetchFn: func(_ context.Context, url string) (string, error) {
-					// Track concurrent fetches
-					current := atomic.AddInt32(&currentConcurrent, 1)
-					mu.Lock()
-					if current > maxConcurrent {
-						maxConcurrent = current
+					// Track concurrent fetches using atomic compare-and-swap for max
+					current := currentConcurrent.Add(1)
+					for {
+						max := maxConcurrent.Load()
+						if current <= max || maxConcurrent.CompareAndSwap(max, current) {
+							break
+						}
 					}
-					mu.Unlock()
 
 					// Simulate work to allow concurrency to build up
 					time.Sleep(50 * time.Millisecond)
 
-					atomic.AddInt32(&currentConcurrent, -1)
+					currentConcurrent.Add(-1)
 					return `<html><body><p>Content</p></body></html>`, nil
 				},
 			},
@@ -1369,9 +1368,9 @@ func TestRecursiveCrawl_Concurrency(t *testing.T) {
 
 		// The key assertion: we should see concurrent processing
 		// With concurrency=3, we should see at least 2 concurrent fetches at some point
-		assert.GreaterOrEqual(t, maxConcurrent, int32(2),
+		assert.GreaterOrEqual(t, maxConcurrent.Load(), int32(2),
 			"expected at least 2 concurrent fetches, got %d (should see parallelism with concurrency=%d)",
-			maxConcurrent, concurrency)
+			maxConcurrent.Load(), concurrency)
 	})
 
 	t.Run("respects max URL limit with concurrent workers", func(t *testing.T) {
