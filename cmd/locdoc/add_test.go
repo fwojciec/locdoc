@@ -363,6 +363,97 @@ func TestAddCmd_Run(t *testing.T) {
 		assert.NotContains(t, output, "/0]", "progress should NOT show '/0]' for unknown total")
 	})
 
+	t.Run("preview mode falls back to recursive discovery when sitemap unavailable", func(t *testing.T) {
+		t.Parallel()
+
+		var projectCreated bool
+
+		projects := &mock.ProjectService{
+			CreateProjectFn: func(_ context.Context, _ *locdoc.Project) error {
+				projectCreated = true
+				return nil
+			},
+		}
+
+		sitemaps := &mock.SitemapService{
+			DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
+				return []string{}, nil // Empty sitemap, should trigger recursive discovery
+			},
+		}
+
+		fetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, url string) (string, error) {
+				if url == "https://example.com/docs/" {
+					return `<html><body><nav><a href="/docs/page1">Page 1</a><a href="/docs/page2">Page 2</a></nav></body></html>`, nil
+				}
+				if url == "https://example.com/docs/page1" {
+					return `<html><body><nav><a href="/docs/page3">Page 3</a></nav></body></html>`, nil
+				}
+				return `<html><body></body></html>`, nil
+			},
+		}
+
+		linkSelectors := &mock.LinkSelectorRegistry{
+			GetForHTMLFn: func(html string) locdoc.LinkSelector {
+				return &mock.LinkSelector{
+					ExtractLinksFn: func(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
+						if baseURL == "https://example.com/docs/" {
+							return []locdoc.DiscoveredLink{
+								{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
+								{URL: "https://example.com/docs/page2", Priority: locdoc.PriorityNavigation},
+							}, nil
+						}
+						if baseURL == "https://example.com/docs/page1" {
+							return []locdoc.DiscoveredLink{
+								{URL: "https://example.com/docs/page3", Priority: locdoc.PriorityNavigation},
+							}, nil
+						}
+						return nil, nil
+					},
+					NameFn: func() string { return "test" },
+				}
+			},
+		}
+
+		rateLimiter := &mock.DomainLimiter{
+			WaitFn: func(_ context.Context, _ string) error {
+				return nil
+			},
+		}
+
+		stdout := &bytes.Buffer{}
+		stderr := &bytes.Buffer{}
+
+		deps := &main.Dependencies{
+			Ctx:           context.Background(),
+			Stdout:        stdout,
+			Stderr:        stderr,
+			Projects:      projects,
+			Sitemaps:      sitemaps,
+			Fetcher:       fetcher,
+			LinkSelectors: linkSelectors,
+			RateLimiter:   rateLimiter,
+		}
+
+		cmd := &main.AddCmd{
+			Name:    "testdocs",
+			URL:     "https://example.com/docs/",
+			Preview: true,
+		}
+
+		err := cmd.Run(deps)
+
+		require.NoError(t, err)
+		assert.False(t, projectCreated, "preview mode should not create project")
+
+		output := stdout.String()
+		// Should discover URLs recursively
+		assert.Contains(t, output, "https://example.com/docs/")
+		assert.Contains(t, output, "https://example.com/docs/page1")
+		assert.Contains(t, output, "https://example.com/docs/page2")
+		assert.Contains(t, output, "https://example.com/docs/page3")
+	})
+
 	t.Run("prints failures on separate lines to stderr", func(t *testing.T) {
 		t.Parallel()
 

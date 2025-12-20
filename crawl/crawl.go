@@ -513,3 +513,100 @@ func FormatTokens(tokens int) string {
 	}
 	return fmt.Sprintf("~%dk tokens", (tokens+500)/1000)
 }
+
+// DiscoverURLs recursively discovers URLs from a documentation site.
+// It follows links within the path prefix scope of the source URL.
+// This is used for preview mode when sitemap discovery returns no URLs.
+//
+// Discovery stops after processing maxRecursiveCrawlURLs (1000) URLs
+// to prevent runaway crawls on large sites.
+func DiscoverURLs(
+	ctx context.Context,
+	sourceURL string,
+	urlFilter *locdoc.URLFilter,
+	fetcher locdoc.Fetcher,
+	linkSelectors locdoc.LinkSelectorRegistry,
+	rateLimiter locdoc.DomainLimiter,
+) ([]string, error) {
+	// Parse source URL to get base path for scope limiting
+	parsedURL, err := url.Parse(sourceURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid source URL: %w", err)
+	}
+	pathPrefix := parsedURL.Path
+
+	// Create frontier and seed with source URL
+	frontier := NewFrontier(frontierExpectedURLs, frontierFalsePositiveRate)
+	frontier.Push(locdoc.DiscoveredLink{
+		URL:      sourceURL,
+		Priority: locdoc.PriorityNavigation,
+	})
+
+	var urls []string
+	processedCount := 0
+
+	// Process URLs from frontier
+	for {
+		link, ok := frontier.Pop()
+		if !ok {
+			break // Frontier empty
+		}
+
+		// Safety limit to prevent runaway crawls
+		if processedCount >= maxRecursiveCrawlURLs {
+			break
+		}
+		processedCount++
+
+		// Check context cancellation
+		if ctx.Err() != nil {
+			break
+		}
+
+		// Rate limit
+		linkURL, err := url.Parse(link.URL)
+		if err != nil {
+			continue
+		}
+		if err := rateLimiter.Wait(ctx, linkURL.Host); err != nil {
+			break // Context canceled
+		}
+
+		// Fetch page to discover links
+		html, err := fetcher.Fetch(ctx, link.URL)
+		if err != nil {
+			continue // Skip failed pages in preview mode
+		}
+
+		// Add this URL to the discovered list
+		urls = append(urls, link.URL)
+
+		// Extract links and add to frontier
+		selector := linkSelectors.GetForHTML(html)
+		links, err := selector.ExtractLinks(html, link.URL)
+		if err != nil {
+			continue
+		}
+
+		for _, discovered := range links {
+			// Check scope: must be same host and within path prefix
+			discoveredURL, err := url.Parse(discovered.URL)
+			if err != nil {
+				continue
+			}
+			if discoveredURL.Host != parsedURL.Host {
+				continue
+			}
+			if !strings.HasPrefix(discoveredURL.Path, pathPrefix) {
+				continue
+			}
+			// Apply URL filter if configured
+			if urlFilter != nil && !matchesFilter(discovered.URL, urlFilter) {
+				continue
+			}
+			frontier.Push(discovered)
+		}
+	}
+
+	return urls, nil
+}
