@@ -93,12 +93,18 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 		return "", err
 	}
 
-	// Create a new page
-	page, err := f.browser.Page(proto.TargetCreateTarget{})
+	// Use incognito context for isolation. Each fetch gets isolated cookies, cache,
+	// and localStorage, preventing cross-contamination between concurrent requests.
+	incognito, err := f.browser.Incognito()
 	if err != nil {
 		return "", err
 	}
-	defer page.Close()
+
+	page, err := incognito.Page(proto.TargetCreateTarget{})
+	if err != nil {
+		_ = incognito.Close()
+		return "", err
+	}
 
 	// Create timeout context for entire fetch operation (navigate + wait + HTML)
 	fetchCtx, cancel := context.WithTimeout(ctx, f.fetchTimeout)
@@ -109,21 +115,41 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 
 	// Navigate to URL
 	if err := page.Navigate(url); err != nil {
+		f.closePageAndContext(page, incognito)
 		return "", err
 	}
 
-	// Wait for page to load
-	if err := page.WaitLoad(); err != nil {
+	// Wait for page to stabilize (combines WaitLoad, WaitRequestIdle, and WaitDOMStable).
+	// WaitStable is more reliable than WaitLoad in concurrent scenarios because if one
+	// event fails to fire, others can still complete and unblock execution.
+	if err := page.WaitStable(time.Second); err != nil {
+		f.closePageAndContext(page, incognito)
 		return "", err
 	}
 
 	// Get rendered HTML
 	html, err := page.HTML()
 	if err != nil {
+		f.closePageAndContext(page, incognito)
 		return "", err
 	}
 
+	// Clean close of entire incognito context (error intentionally ignored)
+	_ = incognito.Close()
 	return html, nil
+}
+
+// closePageAndContext closes a page and its incognito context using a fresh context.
+// When a page's context is cancelled due to timeout, page.Close() with that context
+// will also fail. This method uses a fresh context for cleanup operations.
+// Errors are intentionally ignored as this is best-effort cleanup during error recovery.
+func (f *Fetcher) closePageAndContext(page *rod.Page, incognito *rod.Browser) {
+	// Create fresh context for cleanup operations since the page's context may be cancelled
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_ = page.Context(cleanupCtx).Close()
+	_ = incognito.Close()
 }
 
 // Close releases browser resources. Close is safe to call multiple times.
