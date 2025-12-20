@@ -2,29 +2,31 @@ package rod
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/fwojciec/locdoc"
 	"github.com/go-rod/rod"
-	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
 )
 
 // DefaultFetchTimeout is the default timeout for page navigation and loading.
-const DefaultFetchTimeout = 30 * time.Second
+// Kept short (10s) so stuck pages fail fast and retry quickly rather than
+// waiting 30s to discover a transient issue.
+const DefaultFetchTimeout = 10 * time.Second
 
 // Ensure Fetcher implements locdoc.Fetcher at compile time.
 var _ locdoc.Fetcher = (*Fetcher)(nil)
 
 // Fetcher retrieves rendered HTML from URLs using Chrome browser automation.
+// The browser is automatically recycled after processing a configurable number
+// of pages (default 75) to prevent memory accumulation.
 // Fetcher is safe for concurrent use by multiple goroutines.
 type Fetcher struct {
-	browser      *rod.Browser
-	launcher     *launcher.Launcher
+	manager      *BrowserManager
 	fetchTimeout time.Duration
+	maxPages     int64
 	closed       atomic.Bool
 	closeOnce    sync.Once
 	closeErr     error
@@ -41,42 +43,35 @@ func WithFetchTimeout(d time.Duration) Option {
 	}
 }
 
+// WithRecycleAfter sets the number of pages after which the browser is recycled.
+// Defaults to 75 if not specified. Chrome accumulates memory over time, and
+// recycling the browser periodically prevents unbounded memory growth.
+func WithRecycleAfter(n int64) Option {
+	return func(f *Fetcher) {
+		f.maxPages = n
+	}
+}
+
 // NewFetcher creates a new Fetcher that launches a headless Chrome browser.
+// The browser is automatically recycled after processing maxPages (default 75)
+// to prevent memory accumulation.
 // Close must be called when the Fetcher is no longer needed.
 //
 // Returns an error if Chrome/Chromium cannot be found or launched.
 func NewFetcher(opts ...Option) (*Fetcher, error) {
-	// Launch browser using rod's launcher (finds or downloads Chrome).
-	// Chrome aggressively throttles "background" tabs during concurrent operations,
-	// causing lifecycle events to fire with massive delays or not at all.
-	// See docs/go-rod-reliability.md for full context.
-	lnchr := launcher.New().
-		Set("disable-background-timer-throttling").    // Prevents timer delays in background tabs
-		Set("disable-backgrounding-occluded-windows"). // Prevents deprioritizing hidden tabs
-		Set("disable-renderer-backgrounding").         // Keeps all renderers at full priority
-		Set("disable-dev-shm-usage").                  // Uses /tmp instead of /dev/shm (essential for Docker)
-		Set("disable-hang-monitor").                   // Prevents killing "unresponsive" heavy pages
-		Leakless(true).                                // Auto-kill browser when Go process exits
-		Headless(true)
-	u, err := lnchr.Launch()
-	if err != nil {
-		return nil, fmt.Errorf("launching browser: %w", err)
-	}
-
-	browser := rod.New().ControlURL(u)
-	if err := browser.Connect(); err != nil {
-		lnchr.Kill() // Clean up launched process on connection failure
-		return nil, fmt.Errorf("connecting to browser: %w", err)
-	}
-
 	f := &Fetcher{
-		browser:      browser,
-		launcher:     lnchr,
 		fetchTimeout: DefaultFetchTimeout,
+		maxPages:     DefaultMaxPages,
 	}
 	for _, opt := range opts {
 		opt(f)
 	}
+
+	manager, err := NewBrowserManager(WithMaxPages(f.maxPages))
+	if err != nil {
+		return nil, err
+	}
+	f.manager = manager
 
 	return f, nil
 }
@@ -93,9 +88,12 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 		return "", err
 	}
 
+	// Get browser from manager (may trigger recycling if page limit reached)
+	browser := f.manager.Browser()
+
 	// Use incognito context for isolation. Each fetch gets isolated cookies, cache,
 	// and localStorage, preventing cross-contamination between concurrent requests.
-	incognito, err := f.browser.Incognito()
+	incognito, err := browser.Incognito()
 	if err != nil {
 		return "", err
 	}
@@ -119,10 +117,10 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 		return "", err
 	}
 
-	// Wait for page to stabilize (combines WaitLoad, WaitRequestIdle, and WaitDOMStable).
-	// WaitStable is more reliable than WaitLoad in concurrent scenarios because if one
-	// event fails to fire, others can still complete and unblock execution.
-	if err := page.WaitStable(time.Second); err != nil {
+	// Wait for page to load. We use WaitLoad instead of WaitStable because WaitStable
+	// requires the DOM to be unchanged for the specified duration, which never happens
+	// on React/JS-heavy sites with continuous animations or state updates.
+	if err := page.WaitLoad(); err != nil {
 		f.closePageAndContext(page, incognito)
 		return "", err
 	}
@@ -136,6 +134,10 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 
 	// Clean close of entire incognito context (error intentionally ignored)
 	_ = incognito.Close()
+
+	// Track page count for browser recycling
+	f.manager.IncrementPageCount()
+
 	return html, nil
 }
 
@@ -156,8 +158,7 @@ func (f *Fetcher) closePageAndContext(page *rod.Page, incognito *rod.Browser) {
 func (f *Fetcher) Close() error {
 	f.closeOnce.Do(func() {
 		f.closed.Store(true)
-		f.closeErr = f.browser.Close()
-		f.launcher.Kill()
+		f.closeErr = f.manager.Close()
 	})
 	return f.closeErr
 }
@@ -165,5 +166,5 @@ func (f *Fetcher) Close() error {
 // LauncherPID returns the process ID of the browser launcher.
 // This method exists for testing purposes to verify proper cleanup.
 func (f *Fetcher) LauncherPID() int {
-	return f.launcher.PID()
+	return f.manager.LauncherPID()
 }
