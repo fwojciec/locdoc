@@ -726,6 +726,110 @@ func TestCrawler_CrawlProject(t *testing.T) {
 		assert.Equal(t, crawl.ProgressFinished, events[2].Type)
 		assert.Equal(t, 1, events[2].Total)
 	})
+
+	t.Run("recursive crawl reports completed count in progress events", func(t *testing.T) {
+		t.Parallel()
+
+		c := &crawl.Crawler{
+			Sitemaps: &mock.SitemapService{
+				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
+					return []string{}, nil // No sitemap, triggers recursive crawl
+				},
+			},
+			Fetcher: &mock.Fetcher{
+				FetchFn: func(_ context.Context, url string) (string, error) {
+					if url == "https://example.com/docs/" {
+						return `<html><body><nav><a href="/docs/page1">Page 1</a></nav><p>Content</p></body></html>`, nil
+					}
+					return `<html><body><p>Page content</p></body></html>`, nil
+				},
+			},
+			Extractor: &mock.Extractor{
+				ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+					return &locdoc.ExtractResult{
+						Title:       "Test",
+						ContentHTML: "<p>Content</p>",
+					}, nil
+				},
+			},
+			Converter: &mock.Converter{
+				ConvertFn: func(_ string) (string, error) {
+					return "Content", nil
+				},
+			},
+			Documents: &mock.DocumentService{
+				CreateDocumentFn: func(_ context.Context, _ *locdoc.Document) error {
+					return nil
+				},
+			},
+			TokenCounter: &mock.TokenCounter{
+				CountTokensFn: func(_ context.Context, _ string) (int, error) {
+					return 1, nil
+				},
+			},
+			LinkSelectors: &mock.LinkSelectorRegistry{
+				GetForHTMLFn: func(html string) locdoc.LinkSelector {
+					return &mock.LinkSelector{
+						ExtractLinksFn: func(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
+							if baseURL == "https://example.com/docs/" {
+								return []locdoc.DiscoveredLink{
+									{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
+								}, nil
+							}
+							return nil, nil
+						},
+						NameFn: func() string { return "test" },
+					}
+				},
+			},
+			RateLimiter: &mock.DomainLimiter{
+				WaitFn: func(_ context.Context, _ string) error {
+					return nil
+				},
+			},
+			Concurrency: 1,
+			RetryDelays: []time.Duration{0},
+		}
+
+		project := &locdoc.Project{
+			ID:        "proj-123",
+			Name:      "test",
+			SourceURL: "https://example.com/docs/",
+		}
+
+		var events []crawl.ProgressEvent
+		progress := func(e crawl.ProgressEvent) {
+			events = append(events, e)
+		}
+
+		result, err := c.CrawlProject(context.Background(), project, progress)
+
+		require.NoError(t, err)
+		require.Equal(t, 2, result.Saved, "should save 2 pages")
+
+		// Recursive crawling doesn't emit ProgressStarted (no known total)
+		// It should emit ProgressCompleted events with incrementing Completed count
+		var completedEvents []crawl.ProgressEvent
+		for _, e := range events {
+			if e.Type == crawl.ProgressCompleted {
+				completedEvents = append(completedEvents, e)
+			}
+		}
+
+		require.Len(t, completedEvents, 2, "should have 2 completed events")
+
+		// Completed count should increment: 1, 2
+		assert.Equal(t, 1, completedEvents[0].Completed, "first completed should be 1")
+		assert.Equal(t, 2, completedEvents[1].Completed, "second completed should be 2")
+
+		// Total should be 0 (unknown) for recursive crawling
+		assert.Equal(t, 0, completedEvents[0].Total, "total should be 0 (unknown)")
+		assert.Equal(t, 0, completedEvents[1].Total, "total should be 0 (unknown)")
+
+		// Should have a Finished event at the end
+		lastEvent := events[len(events)-1]
+		assert.Equal(t, crawl.ProgressFinished, lastEvent.Type, "last event should be Finished")
+	})
 }
 
 func TestProgressType_Constants(t *testing.T) {
