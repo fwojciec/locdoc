@@ -313,4 +313,94 @@ func TestGenericSelector_ExtractLinks(t *testing.T) {
 
 		assert.Equal(t, "https://example.com/docs/valid", links[0].URL)
 	})
+
+	t.Run("falls back to path-filtered links when semantic selectors find nothing", func(t *testing.T) {
+		t.Parallel()
+
+		// Simulates a Tailwind CSS site with no semantic HTML elements
+		// All navigation is in plain divs with utility classes
+		// Page has docs links AND other site links - only docs links should be extracted
+		html := `<!DOCTYPE html>
+<html>
+<head><title>TanStack-like Docs</title></head>
+<body>
+<div class="flex flex-col gap-4">
+	<a href="/query/v5/docs/overview">Overview</a>
+	<a href="/query/v5/docs/installation">Installation</a>
+	<a href="/query/v5/docs/quick-start">Quick Start</a>
+	<a href="/query/v4/docs/old-version">Old Version</a>
+	<a href="/router/docs/intro">Router Docs</a>
+	<a href="https://github.com/tanstack/query">GitHub</a>
+</div>
+</body>
+</html>`
+
+		s := goquery.NewGenericSelector()
+		// Base URL includes path - fallback should only include links under this path
+		links, err := s.ExtractLinks(html, "https://tanstack.com/query/v5/docs")
+
+		require.NoError(t, err)
+		require.Len(t, links, 3) // Only /query/v5/docs/* links
+
+		// All should have fallback priority
+		for _, link := range links {
+			assert.Equal(t, locdoc.PriorityFallback, link.Priority)
+			assert.Equal(t, "fallback", link.Source)
+		}
+
+		// Verify the URLs are correct - only v5 docs, not v4 or router
+		urls := make([]string, len(links))
+		for i, l := range links {
+			urls[i] = l.URL
+		}
+		assert.Contains(t, urls, "https://tanstack.com/query/v5/docs/overview")
+		assert.Contains(t, urls, "https://tanstack.com/query/v5/docs/installation")
+		assert.Contains(t, urls, "https://tanstack.com/query/v5/docs/quick-start")
+		assert.NotContains(t, urls, "https://tanstack.com/query/v4/docs/old-version")
+		assert.NotContains(t, urls, "https://tanstack.com/router/docs/intro")
+	})
+
+	t.Run("semantic links keep priority while fallback adds additional links", func(t *testing.T) {
+		t.Parallel()
+
+		// Page has both nav links AND links in plain divs
+		// Nav link keeps higher priority, div link is added with fallback priority
+		html := `<!DOCTYPE html>
+<html>
+<head><title>Test</title></head>
+<body>
+<nav>
+	<a href="/docs/guide">Guide</a>
+</nav>
+<div class="random-div">
+	<a href="/docs/extra">Extra Link in Div</a>
+</div>
+</body>
+</html>`
+
+		s := goquery.NewGenericSelector()
+		links, err := s.ExtractLinks(html, "https://example.com")
+
+		require.NoError(t, err)
+		require.Len(t, links, 2) // Both links found
+
+		// Find the links by URL
+		var navLink, divLink locdoc.DiscoveredLink
+		for _, l := range links {
+			switch l.URL {
+			case "https://example.com/docs/guide":
+				navLink = l
+			case "https://example.com/docs/extra":
+				divLink = l
+			}
+		}
+
+		// Nav link keeps its navigation priority
+		assert.Equal(t, locdoc.PriorityNavigation, navLink.Priority)
+		assert.Equal(t, "nav", navLink.Source)
+
+		// Div link gets fallback priority
+		assert.Equal(t, locdoc.PriorityFallback, divLink.Priority)
+		assert.Equal(t, "fallback", divLink.Source)
+	})
 }

@@ -6,6 +6,7 @@ type LinkPriority int
 // Link priority levels for crawl ordering.
 const (
 	PriorityIgnore     LinkPriority = 0
+	PriorityFallback   LinkPriority = 10
 	PriorityFooter     LinkPriority = 20
 	PriorityContent    LinkPriority = 50
 	PriorityNavigation LinkPriority = 100

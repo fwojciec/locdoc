@@ -34,6 +34,7 @@ func (s *GenericSelector) Name() string {
 //   - Navigation: nav, [role="navigation"], .nav, .menu, .navbar
 //   - Content: main, article, .content, .doc-content
 //   - Footer: footer, .footer
+//   - Fallback: a[href] matching base URL path (catches links in non-semantic HTML)
 func (s *GenericSelector) ExtractLinks(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
 	base, err := url.Parse(baseURL)
 	if err != nil {
@@ -106,6 +107,57 @@ func (s *GenericSelector) ExtractLinks(html string, baseURL string) ([]locdoc.Di
 	// Footer selectors
 	footerSelectors := "footer a[href], .footer a[href]"
 	extractLinks(footerSelectors, locdoc.PriorityFooter, "footer")
+
+	// Fallback: extract links matching the base URL path prefix with low priority.
+	// Links already found via semantic selectors keep their higher priority
+	// due to the deduplication logic. This ensures sites with non-semantic
+	// HTML (like Tailwind CSS) still get their links discovered.
+	// Path filtering ensures we only get docs links, not unrelated site links.
+	basePath := base.Path
+	doc.Find("a[href]").Each(func(_ int, sel *goquery.Selection) {
+		href, exists := sel.Attr("href")
+		if !exists || href == "" {
+			return
+		}
+
+		if isNonHTTPLink(href) {
+			return
+		}
+
+		resolved := resolveURL(base, href)
+		if resolved == "" {
+			return
+		}
+
+		if !isSameHost(base, resolved) {
+			return
+		}
+
+		// For fallback, also filter by base URL path prefix
+		resolvedURL, err := url.Parse(resolved)
+		if err != nil {
+			return
+		}
+		if basePath != "" && !strings.HasPrefix(resolvedURL.Path, basePath) {
+			return
+		}
+
+		link := locdoc.DiscoveredLink{
+			URL:      resolved,
+			Priority: locdoc.PriorityFallback,
+			Text:     strings.TrimSpace(sel.Text()),
+			Source:   "fallback",
+		}
+
+		if idx, ok := seen[resolved]; ok {
+			if locdoc.PriorityFallback > links[idx].Priority {
+				links[idx] = link
+			}
+		} else {
+			seen[resolved] = len(links)
+			links = append(links, link)
+		}
+	})
 
 	return links, nil
 }
