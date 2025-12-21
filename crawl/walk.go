@@ -36,11 +36,12 @@ type walkResultHandler func(result *crawlResult, frontier *Frontier, parsedSourc
 //
 // The processURL function is called for each URL to fetch and process it.
 // The handleResult function is called for each result to filter links and handle the outcome.
-func (c *Crawler) walkFrontier(
+func walkFrontier(
 	ctx context.Context,
 	sourceURL string,
 	urlFilter *locdoc.URLFilter,
 	fetcher locdoc.Fetcher,
+	concurrency int,
 	processURL walkProcessor,
 	handleResult walkResultHandler,
 ) error {
@@ -58,8 +59,7 @@ func (c *Crawler) walkFrontier(
 		Priority: locdoc.PriorityNavigation,
 	})
 
-	// Set up concurrency
-	concurrency := c.Concurrency
+	// Apply default concurrency
 	if concurrency <= 0 {
 		concurrency = 3
 	}
@@ -182,7 +182,7 @@ func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, u
 		c.processRecursiveResult(ctx, crawlRes, &result, &position, &completedCount, project, progress, frontier, sourceURL, pathPrefix, filter)
 	}
 
-	err := c.walkFrontier(ctx, project.SourceURL, urlFilter, fetcher, c.processRecursiveURL, handleResult)
+	err := walkFrontier(ctx, project.SourceURL, urlFilter, fetcher, c.Concurrency, c.processRecursiveURL, handleResult)
 	if err != nil {
 		return nil, err
 	}
