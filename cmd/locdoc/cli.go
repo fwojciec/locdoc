@@ -22,7 +22,7 @@ type Dependencies struct {
 	Crawler   *crawl.Crawler
 	Asker     locdoc.Asker
 	// The following support recursive URL discovery in preview mode
-	// when sitemap is unavailable. All four fetcher components are required.
+	// when sitemap is unavailable. All components are required.
 	LinkSelectors locdoc.LinkSelectorRegistry
 	RateLimiter   locdoc.DomainLimiter
 	HTTPFetcher   locdoc.Fetcher

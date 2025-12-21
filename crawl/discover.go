@@ -54,6 +54,7 @@ func WithOnURL(fn func(string)) DiscoverOption {
 //
 // The function probes the source URL to determine whether to use HTTP or
 // browser-based fetching based on framework detection.
+// The httpFetcher, rodFetcher, prober, and extractor arguments are required and must not be nil.
 func DiscoverURLs(
 	ctx context.Context,
 	sourceURL string,
