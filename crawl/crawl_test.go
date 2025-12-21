@@ -81,18 +81,20 @@ func newTestCrawler() (*crawl.Crawler, *testMocks) {
 	}
 
 	c := &crawl.Crawler{
-		Sitemaps:      m.Sitemaps,
-		HTTPFetcher:   m.HTTPFetcher,
-		RodFetcher:    m.RodFetcher,
-		Prober:        m.Prober,
-		Extractor:     m.Extractor,
-		Converter:     m.Converter,
-		Documents:     m.Documents,
-		TokenCounter:  m.TokenCounter,
-		LinkSelectors: m.LinkSelectors,
-		RateLimiter:   m.RateLimiter,
-		Concurrency:   1,
-		RetryDelays:   []time.Duration{0},
+		Discoverer: &crawl.Discoverer{
+			HTTPFetcher:   m.HTTPFetcher,
+			RodFetcher:    m.RodFetcher,
+			Prober:        m.Prober,
+			Extractor:     m.Extractor,
+			LinkSelectors: m.LinkSelectors,
+			RateLimiter:   m.RateLimiter,
+			Concurrency:   1,
+			RetryDelays:   []time.Duration{0},
+		},
+		Sitemaps:     m.Sitemaps,
+		Converter:    m.Converter,
+		Documents:    m.Documents,
+		TokenCounter: m.TokenCounter,
 	}
 
 	return c, m
@@ -113,6 +115,50 @@ type testMocks struct {
 	RateLimiter   *mock.DomainLimiter
 }
 
+func TestCrawler_EmbedsDiscoverer(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Crawler fields are accessible through embedded Discoverer", func(t *testing.T) {
+		t.Parallel()
+
+		httpFetcher := &mock.Fetcher{}
+		rodFetcher := &mock.Fetcher{}
+		prober := &mock.Prober{}
+		extractor := &mock.Extractor{}
+		linkSelectors := &mock.LinkSelectorRegistry{}
+		rateLimiter := &mock.DomainLimiter{}
+
+		discoverer := &crawl.Discoverer{
+			HTTPFetcher:   httpFetcher,
+			RodFetcher:    rodFetcher,
+			Prober:        prober,
+			Extractor:     extractor,
+			LinkSelectors: linkSelectors,
+			RateLimiter:   rateLimiter,
+			Concurrency:   5,
+			RetryDelays:   []time.Duration{100 * time.Millisecond},
+		}
+
+		c := &crawl.Crawler{
+			Discoverer:   discoverer,
+			Sitemaps:     &mock.SitemapService{},
+			Converter:    &mock.Converter{},
+			Documents:    &mock.DocumentService{},
+			TokenCounter: &mock.TokenCounter{},
+		}
+
+		// Verify embedded fields are accessible directly on Crawler
+		assert.Same(t, httpFetcher, c.HTTPFetcher)
+		assert.Same(t, rodFetcher, c.RodFetcher)
+		assert.Same(t, prober, c.Prober)
+		assert.Same(t, extractor, c.Extractor)
+		assert.Same(t, linkSelectors, c.LinkSelectors)
+		assert.Same(t, rateLimiter, c.RateLimiter)
+		assert.Equal(t, 5, c.Concurrency)
+		assert.Equal(t, []time.Duration{100 * time.Millisecond}, c.RetryDelays)
+	})
+}
+
 func TestCrawler_CrawlProject(t *testing.T) {
 	t.Parallel()
 
@@ -120,20 +166,22 @@ func TestCrawler_CrawlProject(t *testing.T) {
 		t.Parallel()
 
 		c := &crawl.Crawler{
+			Discoverer: &crawl.Discoverer{
+				HTTPFetcher: &mock.Fetcher{},
+				RodFetcher:  &mock.Fetcher{},
+				Extractor:   &mock.Extractor{},
+				Concurrency: 10,
+				RetryDelays: []time.Duration{0}, // no delay for tests
+				// Note: no LinkSelectors or RateLimiter - no fallback crawling
+			},
 			Sitemaps: &mock.SitemapService{
 				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
 					return []string{}, nil
 				},
 			},
-			HTTPFetcher:  &mock.Fetcher{},
-			RodFetcher:   &mock.Fetcher{},
-			Extractor:    &mock.Extractor{},
 			Converter:    &mock.Converter{},
 			Documents:    &mock.DocumentService{},
 			TokenCounter: &mock.TokenCounter{},
-			Concurrency:  10,
-			RetryDelays:  []time.Duration{0}, // no delay for tests
-			// Note: no LinkSelectors or RateLimiter - no fallback crawling
 		}
 
 		project := &locdoc.Project{
@@ -174,27 +222,52 @@ func TestCrawler_CrawlProject(t *testing.T) {
 		}
 
 		c := &crawl.Crawler{
+			Discoverer: &crawl.Discoverer{
+				HTTPFetcher: &mock.Fetcher{FetchFn: fetchFn},
+				RodFetcher:  &mock.Fetcher{FetchFn: fetchFn},
+				Prober: &mock.Prober{
+					DetectFn: func(_ string) locdoc.Framework {
+						return locdoc.FrameworkSphinx
+					},
+					RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+						return false, true
+					},
+				},
+				Extractor: &mock.Extractor{
+					ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
+						return &locdoc.ExtractResult{
+							Title:       "Test Page",
+							ContentHTML: "<p>Content</p>",
+						}, nil
+					},
+				},
+				LinkSelectors: &mock.LinkSelectorRegistry{
+					GetForHTMLFn: func(html string) locdoc.LinkSelector {
+						return &mock.LinkSelector{
+							ExtractLinksFn: func(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
+								// Return a link to page1 from the main page
+								if baseURL == "https://example.com/docs/" {
+									return []locdoc.DiscoveredLink{
+										{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
+									}, nil
+								}
+								return nil, nil
+							},
+							NameFn: func() string { return "test" },
+						}
+					},
+				},
+				RateLimiter: &mock.DomainLimiter{
+					WaitFn: func(_ context.Context, _ string) error {
+						return nil
+					},
+				},
+				Concurrency: 1,
+				RetryDelays: []time.Duration{0},
+			},
 			Sitemaps: &mock.SitemapService{
 				DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
 					return []string{}, nil // No sitemap URLs
-				},
-			},
-			HTTPFetcher: &mock.Fetcher{FetchFn: fetchFn},
-			RodFetcher:  &mock.Fetcher{FetchFn: fetchFn},
-			Prober: &mock.Prober{
-				DetectFn: func(_ string) locdoc.Framework {
-					return locdoc.FrameworkSphinx
-				},
-				RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
-					return false, true
-				},
-			},
-			Extractor: &mock.Extractor{
-				ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
-					return &locdoc.ExtractResult{
-						Title:       "Test Page",
-						ContentHTML: "<p>Content</p>",
-					}, nil
 				},
 			},
 			Converter: &mock.Converter{
@@ -213,29 +286,6 @@ func TestCrawler_CrawlProject(t *testing.T) {
 					return len(text) / 4, nil
 				},
 			},
-			LinkSelectors: &mock.LinkSelectorRegistry{
-				GetForHTMLFn: func(html string) locdoc.LinkSelector {
-					return &mock.LinkSelector{
-						ExtractLinksFn: func(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
-							// Return a link to page1 from the main page
-							if baseURL == "https://example.com/docs/" {
-								return []locdoc.DiscoveredLink{
-									{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
-								}, nil
-							}
-							return nil, nil
-						},
-						NameFn: func() string { return "test" },
-					}
-				},
-			},
-			RateLimiter: &mock.DomainLimiter{
-				WaitFn: func(_ context.Context, _ string) error {
-					return nil
-				},
-			},
-			Concurrency: 1,
-			RetryDelays: []time.Duration{0},
 		}
 
 		project := &locdoc.Project{

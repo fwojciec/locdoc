@@ -90,12 +90,14 @@ func TestDiscoverURLs(t *testing.T) {
 
 		// Call without WithConcurrency option - should use default of 3
 		c := &crawl.Crawler{
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   fetcher,
-			RodFetcher:    fetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Discoverer: &crawl.Discoverer{
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   fetcher,
+				RodFetcher:    fetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 		urls, err := c.DiscoverURLs(
 			context.Background(),
@@ -181,12 +183,14 @@ func TestDiscoverURLs(t *testing.T) {
 		}
 
 		c := &crawl.Crawler{
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   fetcher,
-			RodFetcher:    fetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Discoverer: &crawl.Discoverer{
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   fetcher,
+				RodFetcher:    fetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 		urls, err := c.DiscoverURLs(
 			context.Background(),
@@ -265,12 +269,14 @@ func TestDiscoverURLs(t *testing.T) {
 		noDelays := []time.Duration{0, 0, 0}
 
 		c := &crawl.Crawler{
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   fetcher,
-			RodFetcher:    fetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Discoverer: &crawl.Discoverer{
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   fetcher,
+				RodFetcher:    fetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 		urls, err := c.DiscoverURLs(
 			context.Background(),
@@ -351,12 +357,14 @@ func TestDiscoverURLs(t *testing.T) {
 		}
 
 		c := &crawl.Crawler{
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   fetcher,
-			RodFetcher:    fetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Discoverer: &crawl.Discoverer{
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   fetcher,
+				RodFetcher:    fetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 		urls, err := c.DiscoverURLs(
 			context.Background(),
@@ -419,12 +427,14 @@ func TestDiscoverURLs(t *testing.T) {
 		}
 
 		c := &crawl.Crawler{
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   fetcher,
-			RodFetcher:    fetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Discoverer: &crawl.Discoverer{
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   fetcher,
+				RodFetcher:    fetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 		urls, err := c.DiscoverURLs(
 			context.Background(),
@@ -490,12 +500,14 @@ func TestDiscoverURLs(t *testing.T) {
 		}
 
 		c := &crawl.Crawler{
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   fetcher,
-			RodFetcher:    fetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Discoverer: &crawl.Discoverer{
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   fetcher,
+				RodFetcher:    fetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 		urls, err := c.DiscoverURLs(
 			context.Background(),
@@ -561,12 +573,14 @@ func TestDiscoverURLs(t *testing.T) {
 		noDelays := []time.Duration{0, 0, 0}
 
 		c := &crawl.Crawler{
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   fetcher,
-			RodFetcher:    fetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Discoverer: &crawl.Discoverer{
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   fetcher,
+				RodFetcher:    fetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 		urls, err := c.DiscoverURLs(
 			context.Background(),
@@ -631,12 +645,14 @@ func TestDiscoverURLs(t *testing.T) {
 		}
 
 		c := &crawl.Crawler{
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   fetcher,
-			RodFetcher:    fetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Discoverer: &crawl.Discoverer{
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   fetcher,
+				RodFetcher:    fetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 		urls, err := c.DiscoverURLs(
 			ctx,
@@ -701,12 +717,14 @@ func TestDiscoverURLs(t *testing.T) {
 		var mu sync.Mutex
 
 		c := &crawl.Crawler{
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   fetcher,
-			RodFetcher:    fetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Discoverer: &crawl.Discoverer{
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   fetcher,
+				RodFetcher:    fetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 		urls, err := c.DiscoverURLs(
 			context.Background(),
@@ -779,12 +797,14 @@ func TestDiscoverURLs(t *testing.T) {
 		}
 
 		c := &crawl.Crawler{
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   httpFetcher,
-			RodFetcher:    rodFetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Discoverer: &crawl.Discoverer{
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   httpFetcher,
+				RodFetcher:    rodFetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 		urls, err := c.DiscoverURLs(
 			context.Background(),
@@ -851,12 +871,14 @@ func TestDiscoverURLs(t *testing.T) {
 		}
 
 		c := &crawl.Crawler{
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   httpFetcher,
-			RodFetcher:    rodFetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Discoverer: &crawl.Discoverer{
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   httpFetcher,
+				RodFetcher:    rodFetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 		urls, err := c.DiscoverURLs(
 			context.Background(),
@@ -935,12 +957,14 @@ func TestDiscoverURLs(t *testing.T) {
 		}
 
 		c := &crawl.Crawler{
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   httpFetcher,
-			RodFetcher:    rodFetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Discoverer: &crawl.Discoverer{
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   httpFetcher,
+				RodFetcher:    rodFetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 		urls, err := c.DiscoverURLs(
 			context.Background(),
@@ -1013,12 +1037,14 @@ func TestDiscoverURLs(t *testing.T) {
 		}
 
 		c := &crawl.Crawler{
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   httpFetcher,
-			RodFetcher:    rodFetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Discoverer: &crawl.Discoverer{
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   httpFetcher,
+				RodFetcher:    rodFetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 		urls, err := c.DiscoverURLs(
 			context.Background(),
@@ -1085,12 +1111,14 @@ func TestDiscoverURLs(t *testing.T) {
 		}
 
 		c := &crawl.Crawler{
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   httpFetcher,
-			RodFetcher:    rodFetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Discoverer: &crawl.Discoverer{
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   httpFetcher,
+				RodFetcher:    rodFetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 		urls, err := c.DiscoverURLs(
 			context.Background(),

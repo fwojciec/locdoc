@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	"github.com/fwojciec/locdoc"
 	"golang.org/x/sync/errgroup"
@@ -17,18 +16,11 @@ import (
 
 // Crawler orchestrates the crawling of documentation sites.
 type Crawler struct {
-	Sitemaps      locdoc.SitemapService
-	HTTPFetcher   locdoc.Fetcher
-	RodFetcher    locdoc.Fetcher
-	Prober        locdoc.Prober
-	Extractor     locdoc.Extractor
-	Converter     locdoc.Converter
-	Documents     locdoc.DocumentService
-	TokenCounter  locdoc.TokenCounter
-	LinkSelectors locdoc.LinkSelectorRegistry
-	RateLimiter   locdoc.DomainLimiter
-	Concurrency   int
-	RetryDelays   []time.Duration
+	*Discoverer
+	Sitemaps     locdoc.SitemapService
+	Converter    locdoc.Converter
+	Documents    locdoc.DocumentService
+	TokenCounter locdoc.TokenCounter
 }
 
 // Result holds the outcome of a crawl operation.
@@ -74,8 +66,6 @@ type crawlResult struct {
 
 // probeFetcher determines which fetcher to use for crawling by probing the first URL.
 // Returns the fetcher to use for subsequent requests.
-//
-// All four components (HTTPFetcher, RodFetcher, Prober, Extractor) must be set.
 //
 // Logic:
 // 1. HTTP fetch first URL

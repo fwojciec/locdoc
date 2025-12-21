@@ -162,16 +162,10 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 			Concurrency:   cli.Add.Concurrency,
 		}
 
-		// Create Crawler with core dependencies (used by both preview and full crawl)
+		// Create Crawler with embedded Discoverer (used by both preview and full crawl)
 		deps.Crawler = &crawl.Crawler{
-			Sitemaps:      deps.Sitemaps,
-			HTTPFetcher:   activeHTTPFetcher,
-			RodFetcher:    activeRodFetcher,
-			Prober:        detector,
-			Extractor:     extractor,
-			LinkSelectors: activeLinkSelectors,
-			RateLimiter:   rateLimiter,
-			Concurrency:   cli.Add.Concurrency,
+			Discoverer: deps.Discoverer,
+			Sitemaps:   deps.Sitemaps,
 		}
 
 		// Add full crawl dependencies for non-preview mode

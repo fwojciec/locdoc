@@ -84,16 +84,18 @@ func TestAddCmd_Run(t *testing.T) {
 		}
 
 		crawler := &crawl.Crawler{
+			Discoverer: &crawl.Discoverer{
+				HTTPFetcher: fetcher,
+				RodFetcher:  fetcher,
+				Prober:      prober,
+				Extractor:   extractor,
+				Concurrency: 1,
+				RetryDelays: []time.Duration{0},
+			},
 			Sitemaps:     sitemaps,
-			HTTPFetcher:  fetcher,
-			RodFetcher:   fetcher,
-			Prober:       prober,
-			Extractor:    extractor,
 			Converter:    converter,
 			Documents:    documents,
 			TokenCounter: tokenCounter,
-			Concurrency:  1,
-			RetryDelays:  []time.Duration{0},
 		}
 
 		stdout := &bytes.Buffer{}
@@ -245,15 +247,17 @@ func TestAddCmd_Run(t *testing.T) {
 		}
 
 		crawler := &crawl.Crawler{
-			Sitemaps:    sitemaps,
-			HTTPFetcher: fetcher,
-			RodFetcher:  fetcher,
-			Prober:      prober,
-			Extractor:   extractor,
-			Converter:   converter,
-			Documents:   documents,
-			Concurrency: 1,
-			RetryDelays: []time.Duration{0},
+			Discoverer: &crawl.Discoverer{
+				HTTPFetcher: fetcher,
+				RodFetcher:  fetcher,
+				Prober:      prober,
+				Extractor:   extractor,
+				Concurrency: 1,
+				RetryDelays: []time.Duration{0},
+			},
+			Sitemaps:  sitemaps,
+			Converter: converter,
+			Documents: documents,
 		}
 
 		stdout := &bytes.Buffer{}
@@ -359,17 +363,19 @@ func TestAddCmd_Run(t *testing.T) {
 		}
 
 		crawler := &crawl.Crawler{
-			Sitemaps:      sitemaps,
-			HTTPFetcher:   fetcher,
-			RodFetcher:    fetcher,
-			Prober:        prober,
-			Extractor:     extractor,
-			Converter:     converter,
-			Documents:     documents,
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			Concurrency:   1,
-			RetryDelays:   []time.Duration{0},
+			Discoverer: &crawl.Discoverer{
+				HTTPFetcher:   fetcher,
+				RodFetcher:    fetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				Concurrency:   1,
+				RetryDelays:   []time.Duration{0},
+			},
+			Sitemaps:  sitemaps,
+			Converter: converter,
+			Documents: documents,
 		}
 
 		stdout := &bytes.Buffer{}
@@ -805,15 +811,17 @@ func TestAddCmd_Run(t *testing.T) {
 		}
 
 		crawler := &crawl.Crawler{
-			Sitemaps:    sitemaps,
-			HTTPFetcher: fetcher,
-			RodFetcher:  fetcher,
-			Prober:      prober,
-			Extractor:   extractor,
-			Converter:   converter,
-			Documents:   documents,
-			Concurrency: 1,
-			RetryDelays: []time.Duration{0},
+			Discoverer: &crawl.Discoverer{
+				HTTPFetcher: fetcher,
+				RodFetcher:  fetcher,
+				Prober:      prober,
+				Extractor:   extractor,
+				Concurrency: 1,
+				RetryDelays: []time.Duration{0},
+			},
+			Sitemaps:  sitemaps,
+			Converter: converter,
+			Documents: documents,
 		}
 
 		stdout := &bytes.Buffer{}

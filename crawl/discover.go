@@ -52,8 +52,8 @@ func WithOnURL(fn func(string)) DiscoverOption {
 // URLs are processed concurrently using walkFrontier for improved performance.
 // Use WithConcurrency and WithRetryDelays options to configure behavior.
 //
-// The Crawler must have HTTPFetcher, RodFetcher, Prober, Extractor,
-// LinkSelectors, and RateLimiter set.
+// The Crawler's embedded Discoverer must have HTTPFetcher, RodFetcher,
+// Prober, Extractor, LinkSelectors, and RateLimiter set for probing.
 func (c *Crawler) DiscoverURLs(
 	ctx context.Context,
 	sourceURL string,
@@ -74,12 +74,14 @@ func (c *Crawler) DiscoverURLs(
 
 	// Create a minimal Crawler with just the dependencies needed for discovery
 	discoverCrawler := &Crawler{
-		HTTPFetcher:   activeFetcher,
-		RodFetcher:    activeFetcher, // Discovery uses the same fetcher for both
-		LinkSelectors: c.LinkSelectors,
-		RateLimiter:   c.RateLimiter,
-		Concurrency:   cfg.concurrency,
-		RetryDelays:   cfg.retryDelays,
+		Discoverer: &Discoverer{
+			HTTPFetcher:   activeFetcher,
+			RodFetcher:    activeFetcher, // Discovery uses the same fetcher for both
+			LinkSelectors: c.LinkSelectors,
+			RateLimiter:   c.RateLimiter,
+			Concurrency:   cfg.concurrency,
+			RetryDelays:   cfg.retryDelays,
+		},
 	}
 
 	// Collected URLs (handleResult is called sequentially from coordinator)

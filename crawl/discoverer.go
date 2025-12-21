@@ -186,10 +186,11 @@ func (d *Discoverer) walkFrontier(
 	processURL walkProcessor,
 	handleResult walkResultHandler,
 ) error {
-	// Create a temporary Crawler to use its walkFrontier method
-	// This is a transitional approach - Crawler still has these methods
+	// Delegate to Crawler.walkFrontier - see locdoc-e70 for planned refactor
 	c := &Crawler{
-		Concurrency: concurrency,
+		Discoverer: &Discoverer{
+			Concurrency: concurrency,
+		},
 	}
 	return c.walkFrontier(ctx, sourceURL, urlFilter, fetcher, processURL, handleResult)
 }
