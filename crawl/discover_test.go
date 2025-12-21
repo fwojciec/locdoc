@@ -546,4 +546,282 @@ func TestDiscoverURLs(t *testing.T) {
 		assert.Contains(t, streamedURLs, "https://example.com/docs/page1")
 		assert.Contains(t, streamedURLs, "https://example.com/docs/page2")
 	})
+
+	t.Run("probe uses HTTP fetcher for known HTTP-only framework", func(t *testing.T) {
+		t.Parallel()
+
+		var httpFetchCalls, rodFetchCalls int
+
+		httpFetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, _ string) (string, error) {
+				httpFetchCalls++
+				return `<html><body><p>HTTP Content</p></body></html>`, nil
+			},
+		}
+		rodFetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, _ string) (string, error) {
+				rodFetchCalls++
+				return `<html><body><p>Rod Content</p></body></html>`, nil
+			},
+		}
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx // Known HTTP-only framework
+			},
+			RequiresJSFn: func(f locdoc.Framework) (bool, bool) {
+				return false, true // Doesn't require JS, is known
+			},
+		}
+		linkSelectors := &mock.LinkSelectorRegistry{
+			GetForHTMLFn: func(_ string) locdoc.LinkSelector {
+				return &mock.LinkSelector{
+					ExtractLinksFn: func(_ string, baseURL string) ([]locdoc.DiscoveredLink, error) {
+						if baseURL == "https://example.com/docs/" {
+							return []locdoc.DiscoveredLink{
+								{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
+							}, nil
+						}
+						return nil, nil
+					},
+					NameFn: func() string { return "test" },
+				}
+			},
+		}
+		rateLimiter := &mock.DomainLimiter{
+			WaitFn: func(_ context.Context, _ string) error {
+				return nil
+			},
+		}
+
+		urls, err := crawl.DiscoverURLs(
+			context.Background(),
+			"https://example.com/docs/",
+			nil,
+			httpFetcher, // Default fetcher (used when no probe options)
+			linkSelectors,
+			rateLimiter,
+			crawl.WithHTTPFetcher(httpFetcher),
+			crawl.WithRodFetcher(rodFetcher),
+			crawl.WithProber(prober),
+		)
+
+		require.NoError(t, err)
+		assert.Len(t, urls, 2)
+		// Probe uses HTTP once, then HTTP for both pages = 3 total
+		assert.Equal(t, 3, httpFetchCalls, "should use HTTP fetcher for probe and all pages")
+		assert.Equal(t, 0, rodFetchCalls, "should not use Rod fetcher")
+	})
+
+	t.Run("probe uses Rod fetcher for known JS framework", func(t *testing.T) {
+		t.Parallel()
+
+		var httpFetchCalls, rodFetchCalls int
+
+		httpFetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, _ string) (string, error) {
+				httpFetchCalls++
+				return `<html><body><p>HTTP Content</p></body></html>`, nil
+			},
+		}
+		rodFetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, _ string) (string, error) {
+				rodFetchCalls++
+				return `<html><body><p>Rod Content</p></body></html>`, nil
+			},
+		}
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkGitBook // Known JS framework
+			},
+			RequiresJSFn: func(f locdoc.Framework) (bool, bool) {
+				return true, true // Requires JS, is known
+			},
+		}
+		linkSelectors := &mock.LinkSelectorRegistry{
+			GetForHTMLFn: func(_ string) locdoc.LinkSelector {
+				return &mock.LinkSelector{
+					ExtractLinksFn: func(_ string, baseURL string) ([]locdoc.DiscoveredLink, error) {
+						if baseURL == "https://example.com/docs/" {
+							return []locdoc.DiscoveredLink{
+								{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
+							}, nil
+						}
+						return nil, nil
+					},
+					NameFn: func() string { return "test" },
+				}
+			},
+		}
+		rateLimiter := &mock.DomainLimiter{
+			WaitFn: func(_ context.Context, _ string) error {
+				return nil
+			},
+		}
+
+		urls, err := crawl.DiscoverURLs(
+			context.Background(),
+			"https://example.com/docs/",
+			nil,
+			httpFetcher, // Default fetcher
+			linkSelectors,
+			rateLimiter,
+			crawl.WithHTTPFetcher(httpFetcher),
+			crawl.WithRodFetcher(rodFetcher),
+			crawl.WithProber(prober),
+		)
+
+		require.NoError(t, err)
+		assert.Len(t, urls, 2)
+		// Probe uses HTTP once, but then Rod for both pages = 2 Rod fetches
+		assert.Equal(t, 1, httpFetchCalls, "should use HTTP fetcher for probe only")
+		assert.Equal(t, 2, rodFetchCalls, "should use Rod fetcher for all pages")
+	})
+
+	t.Run("probe uses Rod fetcher for unknown framework with different content", func(t *testing.T) {
+		t.Parallel()
+
+		var httpFetchCalls, rodFetchCalls int
+		httpHTML := `<html><body><p>Short</p></body></html>`
+		rodHTML := `<html><body><p>Short plus lots more JavaScript-rendered content that makes this much much longer</p></body></html>`
+
+		httpFetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, _ string) (string, error) {
+				httpFetchCalls++
+				return httpHTML, nil
+			},
+		}
+		rodFetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, _ string) (string, error) {
+				rodFetchCalls++
+				return rodHTML, nil
+			},
+		}
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkUnknown
+			},
+			RequiresJSFn: func(f locdoc.Framework) (bool, bool) {
+				return false, false // Unknown framework
+			},
+		}
+		// Extractor returns different content for HTTP vs Rod HTML
+		extractor := &mock.Extractor{
+			ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
+				if html == httpHTML {
+					return &locdoc.ExtractResult{
+						Title:       "Test",
+						ContentHTML: "<p>Short</p>",
+					}, nil
+				}
+				return &locdoc.ExtractResult{
+					Title:       "Test",
+					ContentHTML: "<p>Short plus lots more JavaScript-rendered content that makes this much much longer</p>",
+				}, nil
+			},
+		}
+		linkSelectors := &mock.LinkSelectorRegistry{
+			GetForHTMLFn: func(_ string) locdoc.LinkSelector {
+				return &mock.LinkSelector{
+					ExtractLinksFn: func(_ string, baseURL string) ([]locdoc.DiscoveredLink, error) {
+						if baseURL == "https://example.com/docs/" {
+							return []locdoc.DiscoveredLink{
+								{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
+							}, nil
+						}
+						return nil, nil
+					},
+					NameFn: func() string { return "test" },
+				}
+			},
+		}
+		rateLimiter := &mock.DomainLimiter{
+			WaitFn: func(_ context.Context, _ string) error {
+				return nil
+			},
+		}
+
+		urls, err := crawl.DiscoverURLs(
+			context.Background(),
+			"https://example.com/docs/",
+			nil,
+			httpFetcher, // Default fetcher
+			linkSelectors,
+			rateLimiter,
+			crawl.WithHTTPFetcher(httpFetcher),
+			crawl.WithRodFetcher(rodFetcher),
+			crawl.WithProber(prober),
+			crawl.WithExtractor(extractor),
+		)
+
+		require.NoError(t, err)
+		assert.Len(t, urls, 2)
+		// Probe: HTTP once, Rod once (for comparison), then Rod for pages = 1+1+2
+		assert.Equal(t, 1, httpFetchCalls, "should use HTTP fetcher for probe only")
+		assert.Equal(t, 3, rodFetchCalls, "should use Rod fetcher for comparison probe and all pages")
+	})
+
+	t.Run("probe falls back to Rod when HTTP probe fails", func(t *testing.T) {
+		t.Parallel()
+
+		var httpFetchCalls, rodFetchCalls int
+
+		httpFetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, _ string) (string, error) {
+				httpFetchCalls++
+				return "", locdoc.Errorf(locdoc.EINTERNAL, "connection refused")
+			},
+		}
+		rodFetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, _ string) (string, error) {
+				rodFetchCalls++
+				return `<html><body><p>Rod Content</p></body></html>`, nil
+			},
+		}
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkUnknown
+			},
+			RequiresJSFn: func(f locdoc.Framework) (bool, bool) {
+				return false, false
+			},
+		}
+		linkSelectors := &mock.LinkSelectorRegistry{
+			GetForHTMLFn: func(_ string) locdoc.LinkSelector {
+				return &mock.LinkSelector{
+					ExtractLinksFn: func(_ string, baseURL string) ([]locdoc.DiscoveredLink, error) {
+						if baseURL == "https://example.com/docs/" {
+							return []locdoc.DiscoveredLink{
+								{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
+							}, nil
+						}
+						return nil, nil
+					},
+					NameFn: func() string { return "test" },
+				}
+			},
+		}
+		rateLimiter := &mock.DomainLimiter{
+			WaitFn: func(_ context.Context, _ string) error {
+				return nil
+			},
+		}
+
+		urls, err := crawl.DiscoverURLs(
+			context.Background(),
+			"https://example.com/docs/",
+			nil,
+			httpFetcher, // Default fetcher
+			linkSelectors,
+			rateLimiter,
+			crawl.WithHTTPFetcher(httpFetcher),
+			crawl.WithRodFetcher(rodFetcher),
+			crawl.WithProber(prober),
+		)
+
+		require.NoError(t, err)
+		assert.Len(t, urls, 2)
+		// HTTP fails, fall back to Rod for everything = 2 pages
+		assert.Equal(t, 1, httpFetchCalls, "should attempt HTTP probe once")
+		assert.Equal(t, 2, rodFetchCalls, "should fall back to Rod for all pages")
+	})
 }
