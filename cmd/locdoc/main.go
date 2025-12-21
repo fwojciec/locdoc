@@ -145,10 +145,10 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		// Wrap services with logging decorators when debug is enabled
 		if cli.Add.Debug {
 			logger := slog.New(slog.NewTextHandler(stderr, nil))
-			deps.Sitemaps = lochttp.NewLoggingSitemapService(deps.Sitemaps, logger)
+			deps.Sitemaps = locslog.NewLoggingSitemapService(deps.Sitemaps, logger)
 			activeRodFetcher = locslog.NewLoggingFetcher(rodFetcher, logger)
 			activeHTTPFetcher = locslog.NewLoggingFetcher(httpFetcher, logger)
-			activeLinkSelectors = goquery.NewLoggingRegistry(linkSelectors, detector, logger)
+			activeLinkSelectors = locslog.NewLoggingRegistry(linkSelectors, detector, logger)
 		}
 
 		// Create Crawler with core dependencies (used by both preview and full crawl)

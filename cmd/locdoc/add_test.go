@@ -11,8 +11,6 @@ import (
 	"github.com/fwojciec/locdoc"
 	main "github.com/fwojciec/locdoc/cmd/locdoc"
 	"github.com/fwojciec/locdoc/crawl"
-	"github.com/fwojciec/locdoc/goquery"
-	lochttp "github.com/fwojciec/locdoc/http"
 	"github.com/fwojciec/locdoc/mock"
 	locslog "github.com/fwojciec/locdoc/slog"
 	"github.com/stretchr/testify/assert"
@@ -664,9 +662,9 @@ func TestAddCmd_Run(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(stderr, nil))
 
 		// Wrap services with logging decorators (simulating main.go wiring when Debug=true)
-		loggingSitemaps := lochttp.NewLoggingSitemapService(sitemaps, logger)
+		loggingSitemaps := locslog.NewLoggingSitemapService(sitemaps, logger)
 		loggingFetcher := locslog.NewLoggingFetcher(fetcher, logger)
-		loggingRegistry := goquery.NewLoggingRegistry(linkSelectors, detector, logger)
+		loggingRegistry := locslog.NewLoggingRegistry(linkSelectors, detector, logger)
 
 		prober := &mock.Prober{
 			DetectFn: func(_ string) locdoc.Framework {
