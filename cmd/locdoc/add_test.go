@@ -481,7 +481,7 @@ func TestAddCmd_Run(t *testing.T) {
 			Stderr:   stderr,
 			Projects: projects,
 			Sitemaps: sitemaps,
-			Crawler: &crawl.Crawler{
+			Discoverer: &crawl.Discoverer{
 				LinkSelectors: linkSelectors,
 				RateLimiter:   rateLimiter,
 				HTTPFetcher:   fetcher,
@@ -586,7 +586,7 @@ func TestAddCmd_Run(t *testing.T) {
 			Stdout:   stdout,
 			Stderr:   &bytes.Buffer{},
 			Sitemaps: sitemaps,
-			Crawler: &crawl.Crawler{
+			Discoverer: &crawl.Discoverer{
 				LinkSelectors: linkSelectors,
 				RateLimiter:   rateLimiter,
 				HTTPFetcher:   fetcher,
@@ -686,7 +686,7 @@ func TestAddCmd_Run(t *testing.T) {
 			Stdout:   stdout,
 			Stderr:   stderr,
 			Sitemaps: loggingSitemaps,
-			Crawler: &crawl.Crawler{
+			Discoverer: &crawl.Discoverer{
 				LinkSelectors: loggingRegistry,
 				RateLimiter:   rateLimiter,
 				HTTPFetcher:   loggingFetcher,
