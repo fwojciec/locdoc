@@ -53,7 +53,7 @@ func WithOnURL(fn func(string)) DiscoverOption {
 // Use WithConcurrency and WithRetryDelays options to configure behavior.
 //
 // The Crawler's embedded Discoverer must have HTTPFetcher, RodFetcher,
-// Prober, Extractor, LinkSelectors, and RateLimiter set.
+// Prober, Extractor, LinkSelectors, and RateLimiter set for probing.
 func (c *Crawler) DiscoverURLs(
 	ctx context.Context,
 	sourceURL string,
