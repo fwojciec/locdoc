@@ -1,4 +1,4 @@
-package http_test
+package slog_test
 
 import (
 	"bytes"
@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/fwojciec/locdoc"
-	"github.com/fwojciec/locdoc/http"
 	"github.com/fwojciec/locdoc/mock"
+	locslog "github.com/fwojciec/locdoc/slog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +28,7 @@ func TestLoggingSitemapService_DiscoverURLs(t *testing.T) {
 			},
 		}
 
-		svc := http.NewLoggingSitemapService(inner, logger)
+		svc := locslog.NewLoggingSitemapService(inner, logger)
 		urls, err := svc.DiscoverURLs(context.Background(), "https://example.com", nil)
 
 		require.NoError(t, err)
@@ -51,7 +51,7 @@ func TestLoggingSitemapService_DiscoverURLs(t *testing.T) {
 			},
 		}
 
-		svc := http.NewLoggingSitemapService(inner, logger)
+		svc := locslog.NewLoggingSitemapService(inner, logger)
 		_, err := svc.DiscoverURLs(context.Background(), "https://example.com", nil)
 
 		require.Error(t, err)

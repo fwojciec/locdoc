@@ -1,4 +1,4 @@
-package goquery
+package slog
 
 import (
 	"log/slog"

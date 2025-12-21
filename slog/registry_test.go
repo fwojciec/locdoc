@@ -1,4 +1,4 @@
-package goquery_test
+package slog_test
 
 import (
 	"bytes"
@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/fwojciec/locdoc"
-	"github.com/fwojciec/locdoc/goquery"
 	"github.com/fwojciec/locdoc/mock"
+	locslog "github.com/fwojciec/locdoc/slog"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -31,7 +31,7 @@ func TestLoggingRegistry_GetForHTML(t *testing.T) {
 			},
 		}
 
-		registry := goquery.NewLoggingRegistry(inner, detector, logger)
+		registry := locslog.NewLoggingRegistry(inner, detector, logger)
 		selector := registry.GetForHTML("<html>docusaurus</html>")
 
 		assert.Equal(t, mockSelector, selector)
@@ -58,7 +58,7 @@ func TestLoggingRegistry_GetForHTML(t *testing.T) {
 			},
 		}
 
-		registry := goquery.NewLoggingRegistry(inner, detector, logger)
+		registry := locslog.NewLoggingRegistry(inner, detector, logger)
 		registry.GetForHTML("<html>unknown</html>")
 
 		output := buf.String()
@@ -81,7 +81,7 @@ func TestLoggingRegistry_Get(t *testing.T) {
 			},
 		}
 
-		registry := goquery.NewLoggingRegistry(inner, nil, logger)
+		registry := locslog.NewLoggingRegistry(inner, nil, logger)
 		selector := registry.Get(locdoc.FrameworkDocusaurus)
 
 		assert.Equal(t, mockSelector, selector)
@@ -106,7 +106,7 @@ func TestLoggingRegistry_Register(t *testing.T) {
 			},
 		}
 
-		registry := goquery.NewLoggingRegistry(inner, nil, logger)
+		registry := locslog.NewLoggingRegistry(inner, nil, logger)
 		registry.Register(locdoc.FrameworkDocusaurus, mockSelector)
 
 		assert.Equal(t, locdoc.FrameworkDocusaurus, registeredFramework)
@@ -128,7 +128,7 @@ func TestLoggingRegistry_List(t *testing.T) {
 			},
 		}
 
-		registry := goquery.NewLoggingRegistry(inner, nil, logger)
+		registry := locslog.NewLoggingRegistry(inner, nil, logger)
 		frameworks := registry.List()
 
 		assert.Equal(t, []locdoc.Framework{locdoc.FrameworkDocusaurus, locdoc.FrameworkSphinx}, frameworks)
