@@ -53,6 +53,18 @@ type FrameworkDetector interface {
 	Detect(html string) Framework
 }
 
+// Prober identifies documentation frameworks and determines their rendering requirements.
+type Prober interface {
+	FrameworkDetector
+
+	// RequiresJS indicates whether a framework requires JavaScript rendering.
+	// Returns (requires, known) where:
+	//   - requires: true if the framework needs JS to render content
+	//   - known: true if the framework is recognized
+	// Unknown frameworks return (false, false).
+	RequiresJS(framework Framework) (requires bool, known bool)
+}
+
 // LinkSelectorRegistry manages framework-specific selectors.
 type LinkSelectorRegistry interface {
 	// Get returns the selector for a specific framework.

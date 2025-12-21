@@ -29,6 +29,22 @@ func (d *FrameworkDetector) Detect(html string) locdoc.Framework {
 	return d.DetectFn(html)
 }
 
+var _ locdoc.Prober = (*Prober)(nil)
+
+// Prober is a mock implementation of locdoc.Prober.
+type Prober struct {
+	DetectFn     func(html string) locdoc.Framework
+	RequiresJSFn func(framework locdoc.Framework) (requires bool, known bool)
+}
+
+func (p *Prober) Detect(html string) locdoc.Framework {
+	return p.DetectFn(html)
+}
+
+func (p *Prober) RequiresJS(framework locdoc.Framework) (requires bool, known bool) {
+	return p.RequiresJSFn(framework)
+}
+
 var _ locdoc.LinkSelectorRegistry = (*LinkSelectorRegistry)(nil)
 
 // LinkSelectorRegistry is a mock implementation of locdoc.LinkSelectorRegistry.

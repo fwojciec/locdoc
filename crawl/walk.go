@@ -22,7 +22,7 @@ const (
 )
 
 // walkProcessor processes a URL and returns a crawlResult.
-type walkProcessor func(ctx context.Context, link locdoc.DiscoveredLink) crawlResult
+type walkProcessor func(ctx context.Context, link locdoc.DiscoveredLink, fetcher locdoc.Fetcher) crawlResult
 
 // walkResultHandler handles a completed crawlResult.
 // It should add discovered links to the frontier (after filtering) and handle the result.
@@ -40,6 +40,7 @@ func (c *Crawler) walkFrontier(
 	ctx context.Context,
 	sourceURL string,
 	urlFilter *locdoc.URLFilter,
+	fetcher locdoc.Fetcher,
 	processURL walkProcessor,
 	handleResult walkResultHandler,
 ) error {
@@ -74,7 +75,7 @@ func (c *Crawler) walkFrontier(
 		go func() {
 			defer wg.Done()
 			for link := range workCh {
-				result := processURL(ctx, link)
+				result := processURL(ctx, link, fetcher)
 				select {
 				case resultCh <- result:
 				case <-ctx.Done():
@@ -171,7 +172,7 @@ drainLoop:
 // recursiveCrawl performs recursive link-following when sitemap discovery fails.
 // It starts from the project's source URL and follows links within the path prefix scope.
 // URLs are processed concurrently using walkFrontier.
-func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, urlFilter *locdoc.URLFilter, progress ProgressFunc) (*Result, error) {
+func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, urlFilter *locdoc.URLFilter, fetcher locdoc.Fetcher, progress ProgressFunc) (*Result, error) {
 	var result Result
 	var position int
 	completedCount := 0
@@ -181,7 +182,7 @@ func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, u
 		c.processRecursiveResult(ctx, crawlRes, &result, &position, &completedCount, project, progress, frontier, sourceURL, pathPrefix, filter)
 	}
 
-	err := c.walkFrontier(ctx, project.SourceURL, urlFilter, c.processRecursiveURL, handleResult)
+	err := c.walkFrontier(ctx, project.SourceURL, urlFilter, fetcher, c.processRecursiveURL, handleResult)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +197,7 @@ func (c *Crawler) recursiveCrawl(ctx context.Context, project *locdoc.Project, u
 }
 
 // processRecursiveURL fetches and processes a single URL for recursive crawling.
-func (c *Crawler) processRecursiveURL(ctx context.Context, link locdoc.DiscoveredLink) crawlResult {
+func (c *Crawler) processRecursiveURL(ctx context.Context, link locdoc.DiscoveredLink, fetcher locdoc.Fetcher) crawlResult {
 	result := crawlResult{
 		url: link.URL,
 	}
@@ -220,7 +221,7 @@ func (c *Crawler) processRecursiveURL(ctx context.Context, link locdoc.Discovere
 		delays = DefaultRetryDelays()
 	}
 	fetchFn := func(ctx context.Context, url string) (string, error) {
-		return c.Fetcher.Fetch(ctx, url)
+		return fetcher.Fetch(ctx, url)
 	}
 	html, err := FetchWithRetryDelays(ctx, link.URL, fetchFn, nil, delays)
 	if err != nil {

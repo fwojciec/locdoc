@@ -71,7 +71,8 @@ func DiscoverURLs(
 
 	// Create a minimal Crawler with just the dependencies needed for discovery
 	c := &Crawler{
-		Fetcher:       fetcher,
+		HTTPFetcher:   fetcher,
+		RodFetcher:    fetcher, // Discovery uses the same fetcher for both
 		LinkSelectors: linkSelectors,
 		RateLimiter:   rateLimiter,
 		Concurrency:   cfg.concurrency,
@@ -82,7 +83,7 @@ func DiscoverURLs(
 	var urls []string
 
 	// Discovery processor: fetch page and extract links (no content extraction)
-	processURL := func(ctx context.Context, link locdoc.DiscoveredLink) crawlResult {
+	processURL := func(ctx context.Context, link locdoc.DiscoveredLink, f locdoc.Fetcher) crawlResult {
 		result := crawlResult{
 			url: link.URL,
 		}
@@ -102,7 +103,7 @@ func DiscoverURLs(
 
 		// Fetch page with retry
 		fetchFn := func(ctx context.Context, url string) (string, error) {
-			return fetcher.Fetch(ctx, url)
+			return f.Fetch(ctx, url)
 		}
 		html, err := FetchWithRetryDelays(ctx, link.URL, fetchFn, nil, cfg.retryDelays)
 		if err != nil {
@@ -149,7 +150,7 @@ func DiscoverURLs(
 		}
 	}
 
-	err := c.walkFrontier(ctx, sourceURL, urlFilter, processURL, handleResult)
+	err := c.walkFrontier(ctx, sourceURL, urlFilter, fetcher, processURL, handleResult)
 	if err != nil {
 		return nil, err
 	}
