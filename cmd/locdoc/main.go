@@ -136,15 +136,18 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		rateLimiter := crawl.NewDomainLimiter(1.0)
 
 		// Wire discovery dependencies for preview mode (recursive fallback)
-		deps.Fetcher = rodFetcher
 		deps.LinkSelectors = linkSelectors
 		deps.RateLimiter = rateLimiter
+		deps.HTTPFetcher = httpFetcher
+		deps.RodFetcher = rodFetcher
+		deps.Prober = detector
+		deps.Extractor = trafilatura.NewExtractor()
 
 		// Wrap services with logging decorators when debug is enabled
 		if cli.Add.Debug {
 			logger := slog.New(slog.NewTextHandler(stderr, nil))
 			deps.Sitemaps = lochttp.NewLoggingSitemapService(deps.Sitemaps, logger)
-			deps.Fetcher = rod.NewLoggingFetcher(deps.Fetcher, logger)
+			deps.RodFetcher = rod.NewLoggingFetcher(deps.RodFetcher, logger)
 			deps.LinkSelectors = goquery.NewLoggingRegistry(deps.LinkSelectors, detector, logger)
 		}
 

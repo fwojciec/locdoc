@@ -75,6 +75,8 @@ type crawlResult struct {
 // probeFetcher determines which fetcher to use for crawling by probing the first URL.
 // Returns the fetcher to use for subsequent requests.
 //
+// All four components (HTTPFetcher, RodFetcher, Prober, Extractor) must be set.
+//
 // Logic:
 // 1. HTTP fetch first URL
 // 2. Detect framework
@@ -82,24 +84,6 @@ type crawlResult struct {
 // 4. If unknown → Rod fetch, compare content, choose based on differences
 // 5. If HTTP fails → fall back to Rod
 func (c *Crawler) probeFetcher(ctx context.Context, probeURL string) locdoc.Fetcher {
-	// Skip probe if Prober not configured
-	if c.Prober == nil {
-		if c.RodFetcher != nil {
-			return c.RodFetcher
-		}
-		return c.HTTPFetcher
-	}
-
-	// HTTPFetcher required for probing; fall back to Rod if unavailable
-	if c.HTTPFetcher == nil {
-		return c.RodFetcher
-	}
-
-	// RodFetcher required for fallback; use HTTP-only if unavailable
-	if c.RodFetcher == nil {
-		return c.HTTPFetcher
-	}
-
 	// Probe with HTTP
 	httpHTML, httpErr := c.HTTPFetcher.Fetch(ctx, probeURL)
 	if httpErr != nil {
@@ -119,11 +103,6 @@ func (c *Crawler) probeFetcher(ctx context.Context, probeURL string) locdoc.Fetc
 	}
 
 	// Unknown framework: compare HTTP vs Rod content
-	// Skip comparison if no extractor - fall back to Rod (safer for JS sites)
-	if c.Extractor == nil {
-		return c.RodFetcher
-	}
-
 	rodHTML, rodErr := c.RodFetcher.Fetch(ctx, probeURL)
 	if rodErr != nil {
 		// Rod failed, use HTTP

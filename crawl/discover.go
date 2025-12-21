@@ -16,10 +16,6 @@ type discoverConfig struct {
 	concurrency int
 	retryDelays []time.Duration
 	onURL       func(string)
-	httpFetcher locdoc.Fetcher
-	rodFetcher  locdoc.Fetcher
-	prober      locdoc.Prober
-	extractor   locdoc.Extractor
 }
 
 // WithConcurrency sets the number of concurrent workers for URL discovery.
@@ -46,38 +42,6 @@ func WithOnURL(fn func(string)) DiscoverOption {
 	}
 }
 
-// WithHTTPFetcher sets the HTTP fetcher for probing.
-// Used in combination with WithRodFetcher and WithProber to enable adaptive rendering.
-func WithHTTPFetcher(f locdoc.Fetcher) DiscoverOption {
-	return func(c *discoverConfig) {
-		c.httpFetcher = f
-	}
-}
-
-// WithRodFetcher sets the Rod (browser) fetcher for probing.
-// Used in combination with WithHTTPFetcher and WithProber to enable adaptive rendering.
-func WithRodFetcher(f locdoc.Fetcher) DiscoverOption {
-	return func(c *discoverConfig) {
-		c.rodFetcher = f
-	}
-}
-
-// WithProber sets the prober for framework detection and JS requirement checking.
-// Used in combination with WithHTTPFetcher and WithRodFetcher to enable adaptive rendering.
-func WithProber(p locdoc.Prober) DiscoverOption {
-	return func(c *discoverConfig) {
-		c.prober = p
-	}
-}
-
-// WithExtractor sets the extractor for content comparison during probing.
-// Used when probing unknown frameworks to compare HTTP vs Rod content.
-func WithExtractor(e locdoc.Extractor) DiscoverOption {
-	return func(c *discoverConfig) {
-		c.extractor = e
-	}
-}
-
 // DiscoverURLs recursively discovers URLs from a documentation site.
 // It follows links within the path prefix scope of the source URL.
 // This is used for preview mode when sitemap discovery returns no URLs.
@@ -88,15 +52,19 @@ func WithExtractor(e locdoc.Extractor) DiscoverOption {
 // URLs are processed concurrently using walkFrontier for improved performance.
 // Use WithConcurrency and WithRetryDelays options to configure behavior.
 //
-// To enable adaptive rendering (HTTP vs browser), use WithHTTPFetcher,
-// WithRodFetcher, WithProber, and optionally WithExtractor.
+// The function probes the source URL to determine whether to use HTTP or
+// browser-based fetching based on framework detection.
+// The httpFetcher, rodFetcher, prober, and extractor arguments are required and must not be nil.
 func DiscoverURLs(
 	ctx context.Context,
 	sourceURL string,
 	urlFilter *locdoc.URLFilter,
-	fetcher locdoc.Fetcher,
 	linkSelectors locdoc.LinkSelectorRegistry,
 	rateLimiter locdoc.DomainLimiter,
+	httpFetcher locdoc.Fetcher,
+	rodFetcher locdoc.Fetcher,
+	prober locdoc.Prober,
+	extractor locdoc.Extractor,
 	opts ...DiscoverOption,
 ) ([]string, error) {
 	// Apply options
@@ -108,20 +76,14 @@ func DiscoverURLs(
 		opt(cfg)
 	}
 
-	// Determine which fetcher to use via probing if configured.
-	// Probing requires WithHTTPFetcher, WithRodFetcher, and WithProber.
-	// WithExtractor is optional (used for content comparison with unknown frameworks).
-	// The probeFetcher method handles missing fetchers gracefully with fallbacks.
-	activeFetcher := fetcher
-	if cfg.prober != nil {
-		probeCrawler := &Crawler{
-			HTTPFetcher: cfg.httpFetcher,
-			RodFetcher:  cfg.rodFetcher,
-			Prober:      cfg.prober,
-			Extractor:   cfg.extractor,
-		}
-		activeFetcher = probeCrawler.probeFetcher(ctx, sourceURL)
+	// Probe to determine which fetcher to use
+	probeCrawler := &Crawler{
+		HTTPFetcher: httpFetcher,
+		RodFetcher:  rodFetcher,
+		Prober:      prober,
+		Extractor:   extractor,
 	}
+	activeFetcher := probeCrawler.probeFetcher(ctx, sourceURL)
 
 	// Create a minimal Crawler with just the dependencies needed for discovery
 	c := &Crawler{

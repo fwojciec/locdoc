@@ -73,14 +73,32 @@ func TestDiscoverURLs(t *testing.T) {
 			},
 		}
 
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx // Known HTTP-only framework
+			},
+			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+				return false, true // Doesn't require JS, is known
+			},
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Test</p>"}, nil
+			},
+		}
+
 		// Call without WithConcurrency option - should use default of 3
 		urls, err := crawl.DiscoverURLs(
 			context.Background(),
 			"https://example.com/docs/",
 			nil,
-			fetcher,
 			linkSelectors,
 			rateLimiter,
+			fetcher, // httpFetcher
+			fetcher, // rodFetcher (same for this test)
+			prober,
+			extractor,
 		)
 
 		require.NoError(t, err)
@@ -145,13 +163,31 @@ func TestDiscoverURLs(t *testing.T) {
 			},
 		}
 
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx
+			},
+			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+				return false, true
+			},
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Test</p>"}, nil
+			},
+		}
+
 		urls, err := crawl.DiscoverURLs(
 			context.Background(),
 			"https://example.com/docs/",
 			nil,
-			fetcher,
 			linkSelectors,
 			rateLimiter,
+			fetcher,
+			fetcher,
+			prober,
+			extractor,
 			crawl.WithConcurrency(concurrency),
 		)
 
@@ -206,6 +242,21 @@ func TestDiscoverURLs(t *testing.T) {
 			},
 		}
 
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx
+			},
+			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+				return false, true
+			},
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Test</p>"}, nil
+			},
+		}
+
 		// Use zero delays for fast tests
 		noDelays := []time.Duration{0, 0, 0}
 
@@ -213,9 +264,12 @@ func TestDiscoverURLs(t *testing.T) {
 			context.Background(),
 			"https://example.com/docs/",
 			nil,
-			fetcher,
 			linkSelectors,
 			rateLimiter,
+			fetcher,
+			fetcher,
+			prober,
+			extractor,
 			crawl.WithRetryDelays(noDelays),
 		)
 
@@ -275,13 +329,31 @@ func TestDiscoverURLs(t *testing.T) {
 			},
 		}
 
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx
+			},
+			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+				return false, true
+			},
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Test</p>"}, nil
+			},
+		}
+
 		urls, err := crawl.DiscoverURLs(
 			context.Background(),
 			"https://example.com/docs/",
 			nil,
-			fetcher,
 			linkSelectors,
 			rateLimiter,
+			fetcher,
+			fetcher,
+			prober,
+			extractor,
 		)
 
 		require.NoError(t, err)
@@ -323,13 +395,31 @@ func TestDiscoverURLs(t *testing.T) {
 			},
 		}
 
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx
+			},
+			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+				return false, true
+			},
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Test</p>"}, nil
+			},
+		}
+
 		urls, err := crawl.DiscoverURLs(
 			context.Background(),
 			"https://example.com/docs/",
 			nil,
-			fetcher,
 			linkSelectors,
 			rateLimiter,
+			fetcher,
+			fetcher,
+			prober,
+			extractor,
 		)
 
 		require.NoError(t, err)
@@ -374,13 +464,31 @@ func TestDiscoverURLs(t *testing.T) {
 			Include: []*regexp.Regexp{regexp.MustCompile(`/api/`)},
 		}
 
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx
+			},
+			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+				return false, true
+			},
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Test</p>"}, nil
+			},
+		}
+
 		urls, err := crawl.DiscoverURLs(
 			context.Background(),
 			"https://example.com/docs/",
 			filter,
-			fetcher,
 			linkSelectors,
 			rateLimiter,
+			fetcher,
+			fetcher,
+			prober,
+			extractor,
 		)
 
 		require.NoError(t, err)
@@ -422,6 +530,21 @@ func TestDiscoverURLs(t *testing.T) {
 			},
 		}
 
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx
+			},
+			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+				return false, true
+			},
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Test</p>"}, nil
+			},
+		}
+
 		// Use zero delays for fast tests
 		noDelays := []time.Duration{0, 0, 0}
 
@@ -429,9 +552,12 @@ func TestDiscoverURLs(t *testing.T) {
 			context.Background(),
 			"https://example.com/docs/",
 			nil,
-			fetcher,
 			linkSelectors,
 			rateLimiter,
+			fetcher,
+			fetcher,
+			prober,
+			extractor,
 			crawl.WithRetryDelays(noDelays),
 		)
 
@@ -475,13 +601,31 @@ func TestDiscoverURLs(t *testing.T) {
 			},
 		}
 
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx
+			},
+			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+				return false, true
+			},
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Test</p>"}, nil
+			},
+		}
+
 		urls, err := crawl.DiscoverURLs(
 			ctx,
 			"https://example.com/docs/",
 			nil,
-			fetcher,
 			linkSelectors,
 			rateLimiter,
+			fetcher,
+			fetcher,
+			prober,
+			extractor,
 		)
 
 		require.NoError(t, err)
@@ -521,6 +665,21 @@ func TestDiscoverURLs(t *testing.T) {
 			},
 		}
 
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx
+			},
+			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+				return false, true
+			},
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Test</p>"}, nil
+			},
+		}
+
 		// Track URLs as they are streamed
 		var streamedURLs []string
 		var mu sync.Mutex
@@ -529,9 +688,12 @@ func TestDiscoverURLs(t *testing.T) {
 			context.Background(),
 			"https://example.com/docs/",
 			nil,
-			fetcher,
 			linkSelectors,
 			rateLimiter,
+			fetcher,
+			fetcher,
+			prober,
+			extractor,
 			crawl.WithOnURL(func(url string) {
 				mu.Lock()
 				streamedURLs = append(streamedURLs, url)
@@ -572,6 +734,11 @@ func TestDiscoverURLs(t *testing.T) {
 				return false, true // Doesn't require JS, is known
 			},
 		}
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Test</p>"}, nil
+			},
+		}
 		linkSelectors := &mock.LinkSelectorRegistry{
 			GetForHTMLFn: func(_ string) locdoc.LinkSelector {
 				return &mock.LinkSelector{
@@ -597,12 +764,12 @@ func TestDiscoverURLs(t *testing.T) {
 			context.Background(),
 			"https://example.com/docs/",
 			nil,
-			httpFetcher, // Fallback fetcher (overridden by probe options)
 			linkSelectors,
 			rateLimiter,
-			crawl.WithHTTPFetcher(httpFetcher),
-			crawl.WithRodFetcher(rodFetcher),
-			crawl.WithProber(prober),
+			httpFetcher,
+			rodFetcher,
+			prober,
+			extractor,
 		)
 
 		require.NoError(t, err)
@@ -637,6 +804,11 @@ func TestDiscoverURLs(t *testing.T) {
 				return true, true // Requires JS, is known
 			},
 		}
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Test</p>"}, nil
+			},
+		}
 		linkSelectors := &mock.LinkSelectorRegistry{
 			GetForHTMLFn: func(_ string) locdoc.LinkSelector {
 				return &mock.LinkSelector{
@@ -662,12 +834,12 @@ func TestDiscoverURLs(t *testing.T) {
 			context.Background(),
 			"https://example.com/docs/",
 			nil,
-			httpFetcher, // Fallback fetcher (overridden by probe options)
 			linkSelectors,
 			rateLimiter,
-			crawl.WithHTTPFetcher(httpFetcher),
-			crawl.WithRodFetcher(rodFetcher),
-			crawl.WithProber(prober),
+			httpFetcher,
+			rodFetcher,
+			prober,
+			extractor,
 		)
 
 		require.NoError(t, err)
@@ -744,13 +916,12 @@ func TestDiscoverURLs(t *testing.T) {
 			context.Background(),
 			"https://example.com/docs/",
 			nil,
-			httpFetcher, // Fallback fetcher (overridden by probe options)
 			linkSelectors,
 			rateLimiter,
-			crawl.WithHTTPFetcher(httpFetcher),
-			crawl.WithRodFetcher(rodFetcher),
-			crawl.WithProber(prober),
-			crawl.WithExtractor(extractor),
+			httpFetcher,
+			rodFetcher,
+			prober,
+			extractor,
 		)
 
 		require.NoError(t, err)
@@ -821,13 +992,12 @@ func TestDiscoverURLs(t *testing.T) {
 			context.Background(),
 			"https://example.com/docs/",
 			nil,
-			httpFetcher, // Fallback fetcher (overridden by probe options)
 			linkSelectors,
 			rateLimiter,
-			crawl.WithHTTPFetcher(httpFetcher),
-			crawl.WithRodFetcher(rodFetcher),
-			crawl.WithProber(prober),
-			crawl.WithExtractor(extractor),
+			httpFetcher,
+			rodFetcher,
+			prober,
+			extractor,
 		)
 
 		require.NoError(t, err)
@@ -862,6 +1032,11 @@ func TestDiscoverURLs(t *testing.T) {
 				return false, false
 			},
 		}
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Test</p>"}, nil
+			},
+		}
 		linkSelectors := &mock.LinkSelectorRegistry{
 			GetForHTMLFn: func(_ string) locdoc.LinkSelector {
 				return &mock.LinkSelector{
@@ -887,12 +1062,12 @@ func TestDiscoverURLs(t *testing.T) {
 			context.Background(),
 			"https://example.com/docs/",
 			nil,
-			httpFetcher, // Fallback fetcher (overridden by probe options)
 			linkSelectors,
 			rateLimiter,
-			crawl.WithHTTPFetcher(httpFetcher),
-			crawl.WithRodFetcher(rodFetcher),
-			crawl.WithProber(prober),
+			httpFetcher,
+			rodFetcher,
+			prober,
+			extractor,
 		)
 
 		require.NoError(t, err)
