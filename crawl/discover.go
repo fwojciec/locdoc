@@ -72,18 +72,6 @@ func (c *Crawler) DiscoverURLs(
 	// Probe to determine which fetcher to use
 	activeFetcher := c.probeFetcher(ctx, sourceURL)
 
-	// Create a minimal Crawler with just the dependencies needed for discovery
-	discoverCrawler := &Crawler{
-		Discoverer: &Discoverer{
-			HTTPFetcher:   activeFetcher,
-			RodFetcher:    activeFetcher, // Discovery uses the same fetcher for both
-			LinkSelectors: c.LinkSelectors,
-			RateLimiter:   c.RateLimiter,
-			Concurrency:   cfg.concurrency,
-			RetryDelays:   cfg.retryDelays,
-		},
-	}
-
 	// Collected URLs (handleResult is called sequentially from coordinator)
 	var urls []string
 
@@ -155,7 +143,7 @@ func (c *Crawler) DiscoverURLs(
 		}
 	}
 
-	err := discoverCrawler.walkFrontier(ctx, sourceURL, urlFilter, activeFetcher, processURL, handleResult)
+	err := walkFrontier(ctx, sourceURL, urlFilter, activeFetcher, cfg.concurrency, processURL, handleResult)
 	if err != nil {
 		return nil, err
 	}

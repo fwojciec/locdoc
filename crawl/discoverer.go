@@ -125,7 +125,7 @@ func (d *Discoverer) DiscoverURLs(
 		}
 	}
 
-	err := d.walkFrontier(ctx, sourceURL, urlFilter, activeFetcher, cfg.concurrency, processURL, handleResult)
+	err := walkFrontier(ctx, sourceURL, urlFilter, activeFetcher, cfg.concurrency, processURL, handleResult)
 	if err != nil {
 		return nil, err
 	}
@@ -172,25 +172,4 @@ func (d *Discoverer) probeFetcher(ctx context.Context, probeURL string) locdoc.F
 		return d.RodFetcher
 	}
 	return d.HTTPFetcher
-}
-
-// walkFrontier manages concurrent URL processing starting from sourceURL.
-// It handles frontier management with Bloom filter deduplication and
-// a concurrent worker pool.
-func (d *Discoverer) walkFrontier(
-	ctx context.Context,
-	sourceURL string,
-	urlFilter *locdoc.URLFilter,
-	fetcher locdoc.Fetcher,
-	concurrency int,
-	processURL walkProcessor,
-	handleResult walkResultHandler,
-) error {
-	// Delegate to Crawler.walkFrontier - see locdoc-e70 for planned refactor
-	c := &Crawler{
-		Discoverer: &Discoverer{
-			Concurrency: concurrency,
-		},
-	}
-	return c.walkFrontier(ctx, sourceURL, urlFilter, fetcher, processURL, handleResult)
 }
