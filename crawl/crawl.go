@@ -64,6 +64,14 @@ type crawlResult struct {
 	discovered []locdoc.DiscoveredLink // Links discovered on this page (for recursive crawling)
 }
 
+// probeConfig holds dependencies for probeFetcher.
+type probeConfig struct {
+	HTTPFetcher locdoc.Fetcher
+	RodFetcher  locdoc.Fetcher
+	Prober      locdoc.Prober
+	Extractor   locdoc.Extractor
+}
+
 // probeFetcher determines which fetcher to use for crawling by probing the first URL.
 // Returns the fetcher to use for subsequent requests.
 //
@@ -73,36 +81,36 @@ type crawlResult struct {
 // 3. If known framework → use HTTP or Rod based on RequiresJS
 // 4. If unknown → Rod fetch, compare content, choose based on differences
 // 5. If HTTP fails → fall back to Rod
-func (c *Crawler) probeFetcher(ctx context.Context, probeURL string) locdoc.Fetcher {
+func probeFetcher(ctx context.Context, probeURL string, cfg probeConfig) locdoc.Fetcher {
 	// Probe with HTTP
-	httpHTML, httpErr := c.HTTPFetcher.Fetch(ctx, probeURL)
+	httpHTML, httpErr := cfg.HTTPFetcher.Fetch(ctx, probeURL)
 	if httpErr != nil {
 		// HTTP failed, fall back to Rod
-		return c.RodFetcher
+		return cfg.RodFetcher
 	}
 
 	// Detect framework
-	framework := c.Prober.Detect(httpHTML)
-	requiresJS, known := c.Prober.RequiresJS(framework)
+	framework := cfg.Prober.Detect(httpHTML)
+	requiresJS, known := cfg.Prober.RequiresJS(framework)
 
 	if known {
 		if requiresJS {
-			return c.RodFetcher
+			return cfg.RodFetcher
 		}
-		return c.HTTPFetcher
+		return cfg.HTTPFetcher
 	}
 
 	// Unknown framework: compare HTTP vs Rod content
-	rodHTML, rodErr := c.RodFetcher.Fetch(ctx, probeURL)
+	rodHTML, rodErr := cfg.RodFetcher.Fetch(ctx, probeURL)
 	if rodErr != nil {
 		// Rod failed, use HTTP
-		return c.HTTPFetcher
+		return cfg.HTTPFetcher
 	}
 
-	if ContentDiffers(httpHTML, rodHTML, c.Extractor) {
-		return c.RodFetcher
+	if ContentDiffers(httpHTML, rodHTML, cfg.Extractor) {
+		return cfg.RodFetcher
 	}
-	return c.HTTPFetcher
+	return cfg.HTTPFetcher
 }
 
 // CrawlProject crawls all pages for a project and saves them as documents.
@@ -133,7 +141,13 @@ func (c *Crawler) CrawlProject(ctx context.Context, project *locdoc.Project, pro
 	if len(urls) == 0 {
 		// Fall back to recursive crawling if LinkSelectors is configured
 		if c.LinkSelectors != nil && c.RateLimiter != nil {
-			fetcher := c.probeFetcher(ctx, project.SourceURL)
+			cfg := probeConfig{
+				HTTPFetcher: c.HTTPFetcher,
+				RodFetcher:  c.RodFetcher,
+				Prober:      c.Prober,
+				Extractor:   c.Extractor,
+			}
+			fetcher := probeFetcher(ctx, project.SourceURL, cfg)
 			return c.recursiveCrawl(ctx, project, urlFilter, fetcher, progress)
 		}
 		return &Result{}, nil
@@ -161,7 +175,13 @@ func (c *Crawler) CrawlProject(ctx context.Context, project *locdoc.Project, pro
 	}
 
 	// Probe first URL to determine which fetcher to use
-	fetcher := c.probeFetcher(ctx, urls[0])
+	cfg := probeConfig{
+		HTTPFetcher: c.HTTPFetcher,
+		RodFetcher:  c.RodFetcher,
+		Prober:      c.Prober,
+		Extractor:   c.Extractor,
+	}
+	fetcher := probeFetcher(ctx, urls[0], cfg)
 
 	// Start workers
 	g, gctx := errgroup.WithContext(ctx)

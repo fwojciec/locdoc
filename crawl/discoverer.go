@@ -52,7 +52,13 @@ func (d *Discoverer) DiscoverURLs(
 	}
 
 	// Probe to determine which fetcher to use
-	activeFetcher := d.probeFetcher(ctx, sourceURL)
+	probeCfg := probeConfig{
+		HTTPFetcher: d.HTTPFetcher,
+		RodFetcher:  d.RodFetcher,
+		Prober:      d.Prober,
+		Extractor:   d.Extractor,
+	}
+	activeFetcher := probeFetcher(ctx, sourceURL, probeCfg)
 
 	// Collected URLs (handleResult is called sequentially from coordinator)
 	var urls []string
@@ -131,45 +137,4 @@ func (d *Discoverer) DiscoverURLs(
 	}
 
 	return urls, nil
-}
-
-// probeFetcher determines which fetcher to use for crawling by probing the first URL.
-// Returns the fetcher to use for subsequent requests.
-//
-// Logic:
-// 1. HTTP fetch first URL
-// 2. Detect framework
-// 3. If known framework → use HTTP or Rod based on RequiresJS
-// 4. If unknown → Rod fetch, compare content, choose based on differences
-// 5. If HTTP fails → fall back to Rod
-func (d *Discoverer) probeFetcher(ctx context.Context, probeURL string) locdoc.Fetcher {
-	// Probe with HTTP
-	httpHTML, httpErr := d.HTTPFetcher.Fetch(ctx, probeURL)
-	if httpErr != nil {
-		// HTTP failed, fall back to Rod
-		return d.RodFetcher
-	}
-
-	// Detect framework
-	framework := d.Prober.Detect(httpHTML)
-	requiresJS, known := d.Prober.RequiresJS(framework)
-
-	if known {
-		if requiresJS {
-			return d.RodFetcher
-		}
-		return d.HTTPFetcher
-	}
-
-	// Unknown framework: compare HTTP vs Rod content
-	rodHTML, rodErr := d.RodFetcher.Fetch(ctx, probeURL)
-	if rodErr != nil {
-		// Rod failed, use HTTP
-		return d.HTTPFetcher
-	}
-
-	if ContentDiffers(httpHTML, rodHTML, d.Extractor) {
-		return d.RodFetcher
-	}
-	return d.HTTPFetcher
 }
