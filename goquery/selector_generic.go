@@ -1,10 +1,6 @@
 package goquery
 
 import (
-	"net/url"
-	"strings"
-
-	"github.com/PuerkitoBio/goquery"
 	"github.com/fwojciec/locdoc"
 )
 
@@ -36,128 +32,16 @@ func (s *GenericSelector) Name() string {
 //   - Footer: footer, .footer
 //   - Fallback: a[href] matching base URL path (catches links in non-semantic HTML)
 func (s *GenericSelector) ExtractLinks(html string, baseURL string) ([]locdoc.DiscoveredLink, error) {
-	base, err := url.Parse(baseURL)
-	if err != nil {
-		return nil, locdoc.Errorf(locdoc.EINVALID, "invalid base URL: %v", err)
+	configs := []SelectorConfig{
+		// TOC selectors (highest priority after sitemap)
+		{Selector: ".toc a[href], .table-of-contents a[href], .sidebar a[href], aside a[href]", Priority: locdoc.PriorityTOC, Source: "toc"},
+		// Navigation selectors
+		{Selector: "nav a[href], [role=\"navigation\"] a[href], .nav a[href], .menu a[href], .navbar a[href]", Priority: locdoc.PriorityNavigation, Source: "nav"},
+		// Content selectors
+		{Selector: "main a[href], article a[href], .content a[href], .doc-content a[href]", Priority: locdoc.PriorityContent, Source: "content"},
+		// Footer selectors
+		{Selector: "footer a[href], .footer a[href]", Priority: locdoc.PriorityFooter, Source: "footer"},
 	}
-
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
-	if err != nil {
-		return nil, locdoc.Errorf(locdoc.EINVALID, "failed to parse HTML: %v", err)
-	}
-
-	// Track seen URLs with their index in the result slice for O(1) updates
-	seen := make(map[string]int)
-	var links []locdoc.DiscoveredLink
-
-	extractLinks := func(selector string, priority locdoc.LinkPriority, source string) {
-		doc.Find(selector).Each(func(_ int, sel *goquery.Selection) {
-			href, exists := sel.Attr("href")
-			if !exists || href == "" {
-				return
-			}
-
-			// Skip non-HTTP links (javascript:, mailto:, etc.)
-			if isNonHTTPLink(href) {
-				return
-			}
-
-			resolved := resolveURL(base, href)
-			if resolved == "" {
-				return
-			}
-
-			// Filter external links (exact host match, subdomains are filtered)
-			if !isSameHost(base, resolved) {
-				return
-			}
-
-			link := locdoc.DiscoveredLink{
-				URL:      resolved,
-				Priority: priority,
-				Text:     strings.TrimSpace(sel.Text()),
-				Source:   source,
-			}
-
-			if idx, ok := seen[resolved]; ok {
-				// Update if this has higher priority
-				if priority > links[idx].Priority {
-					links[idx] = link
-				}
-			} else {
-				// First occurrence - add to slice and track index
-				seen[resolved] = len(links)
-				links = append(links, link)
-			}
-		})
-	}
-
-	// TOC selectors (highest priority after sitemap)
-	tocSelectors := ".toc a[href], .table-of-contents a[href], .sidebar a[href], aside a[href]"
-	extractLinks(tocSelectors, locdoc.PriorityTOC, "toc")
-
-	// Navigation selectors
-	navSelectors := "nav a[href], [role=\"navigation\"] a[href], .nav a[href], .menu a[href], .navbar a[href]"
-	extractLinks(navSelectors, locdoc.PriorityNavigation, "nav")
-
-	// Content selectors
-	contentSelectors := "main a[href], article a[href], .content a[href], .doc-content a[href]"
-	extractLinks(contentSelectors, locdoc.PriorityContent, "content")
-
-	// Footer selectors
-	footerSelectors := "footer a[href], .footer a[href]"
-	extractLinks(footerSelectors, locdoc.PriorityFooter, "footer")
-
-	// Fallback: extract links matching the base URL path prefix with low priority.
-	// Links already found via semantic selectors keep their higher priority
-	// due to the deduplication logic. This ensures sites with non-semantic
-	// HTML (like Tailwind CSS) still get their links discovered.
-	// Path filtering ensures we only get docs links, not unrelated site links.
-	basePath := base.Path
-	doc.Find("a[href]").Each(func(_ int, sel *goquery.Selection) {
-		href, exists := sel.Attr("href")
-		if !exists || href == "" {
-			return
-		}
-
-		if isNonHTTPLink(href) {
-			return
-		}
-
-		resolved := resolveURL(base, href)
-		if resolved == "" {
-			return
-		}
-
-		if !isSameHost(base, resolved) {
-			return
-		}
-
-		// For fallback, also filter by base URL path prefix
-		resolvedURL, err := url.Parse(resolved)
-		if err != nil {
-			return
-		}
-		if basePath != "" && !strings.HasPrefix(resolvedURL.Path, basePath) {
-			return
-		}
-
-		link := locdoc.DiscoveredLink{
-			URL:      resolved,
-			Priority: locdoc.PriorityFallback,
-			Text:     strings.TrimSpace(sel.Text()),
-			Source:   "fallback",
-		}
-
-		if idx, ok := seen[resolved]; ok {
-			if locdoc.PriorityFallback > links[idx].Priority {
-				links[idx] = link
-			}
-		} else {
-			seen[resolved] = len(links)
-			links = append(links, link)
-		}
-	})
-
-	return links, nil
+	// Use the fallback variant to also extract links matching the base URL path prefix
+	return ExtractLinksWithConfigsAndFallback(html, baseURL, configs)
 }
