@@ -52,19 +52,12 @@ func WithOnURL(fn func(string)) DiscoverOption {
 // URLs are processed concurrently using walkFrontier for improved performance.
 // Use WithConcurrency and WithRetryDelays options to configure behavior.
 //
-// The function probes the source URL to determine whether to use HTTP or
-// browser-based fetching based on framework detection.
-// The httpFetcher, rodFetcher, prober, and extractor arguments are required and must not be nil.
-func DiscoverURLs(
+// The Crawler must have HTTPFetcher, RodFetcher, Prober, Extractor,
+// LinkSelectors, and RateLimiter set.
+func (c *Crawler) DiscoverURLs(
 	ctx context.Context,
 	sourceURL string,
 	urlFilter *locdoc.URLFilter,
-	linkSelectors locdoc.LinkSelectorRegistry,
-	rateLimiter locdoc.DomainLimiter,
-	httpFetcher locdoc.Fetcher,
-	rodFetcher locdoc.Fetcher,
-	prober locdoc.Prober,
-	extractor locdoc.Extractor,
 	opts ...DiscoverOption,
 ) ([]string, error) {
 	// Apply options
@@ -77,20 +70,14 @@ func DiscoverURLs(
 	}
 
 	// Probe to determine which fetcher to use
-	probeCrawler := &Crawler{
-		HTTPFetcher: httpFetcher,
-		RodFetcher:  rodFetcher,
-		Prober:      prober,
-		Extractor:   extractor,
-	}
-	activeFetcher := probeCrawler.probeFetcher(ctx, sourceURL)
+	activeFetcher := c.probeFetcher(ctx, sourceURL)
 
 	// Create a minimal Crawler with just the dependencies needed for discovery
-	c := &Crawler{
+	discoverCrawler := &Crawler{
 		HTTPFetcher:   activeFetcher,
 		RodFetcher:    activeFetcher, // Discovery uses the same fetcher for both
-		LinkSelectors: linkSelectors,
-		RateLimiter:   rateLimiter,
+		LinkSelectors: c.LinkSelectors,
+		RateLimiter:   c.RateLimiter,
 		Concurrency:   cfg.concurrency,
 		RetryDelays:   cfg.retryDelays,
 	}
@@ -112,7 +99,7 @@ func DiscoverURLs(
 		}
 
 		// Rate limit
-		if err := rateLimiter.Wait(ctx, linkURL.Host); err != nil {
+		if err := c.RateLimiter.Wait(ctx, linkURL.Host); err != nil {
 			result.err = err
 			return result
 		}
@@ -128,7 +115,7 @@ func DiscoverURLs(
 		}
 
 		// Extract links for frontier
-		selector := linkSelectors.GetForHTML(html)
+		selector := c.LinkSelectors.GetForHTML(html)
 		links, err := selector.ExtractLinks(html, link.URL)
 		if err == nil {
 			result.discovered = links
@@ -166,7 +153,7 @@ func DiscoverURLs(
 		}
 	}
 
-	err := c.walkFrontier(ctx, sourceURL, urlFilter, activeFetcher, processURL, handleResult)
+	err := discoverCrawler.walkFrontier(ctx, sourceURL, urlFilter, activeFetcher, processURL, handleResult)
 	if err != nil {
 		return nil, err
 	}
