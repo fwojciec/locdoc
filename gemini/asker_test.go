@@ -108,6 +108,18 @@ func TestBuildConfig_SystemInstructionHasInstructionHierarchy(t *testing.T) {
 	assert.Contains(t, instruction, "decline")
 }
 
+func TestBuildConfig_SystemInstructionHasEpistemicMarkers(t *testing.T) {
+	t.Parallel()
+
+	config := gemini.BuildConfig()
+	instruction := config.SystemInstruction.Parts[0].Text
+
+	// Epistemic markers guide confidence expression
+	assert.Contains(t, instruction, "EPISTEMIC MARKERS")
+	assert.Contains(t, instruction, "The documentation states")
+	assert.Contains(t, instruction, "The documentation suggests")
+}
+
 func TestBuildConfig_SetsTemperature(t *testing.T) {
 	t.Parallel()
 
