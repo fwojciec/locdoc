@@ -15,37 +15,17 @@ import (
 // newTestCrawler creates a Crawler with sensible test defaults.
 // All mocks return minimal successful responses by default.
 // Use the returned mocks struct to customize behavior for specific tests.
-func newTestCrawler() (*crawl.Crawler, *testMocks) {
-	m := &testMocks{
+//
+// Composes a Discoverer (via newTestDiscoverer) with Crawler-specific mocks
+// for storage (Sitemaps, Converter, Documents, TokenCounter).
+func newTestCrawler() (*crawl.Crawler, *crawlerMocks) {
+	d, dm := newTestDiscoverer()
+
+	m := &crawlerMocks{
+		discovererMocks: dm,
 		Sitemaps: &mock.SitemapService{
 			DiscoverURLsFn: func(_ context.Context, _ string, _ *locdoc.URLFilter) ([]string, error) {
 				return []string{}, nil
-			},
-		},
-		HTTPFetcher: &mock.Fetcher{
-			FetchFn: func(_ context.Context, _ string) (string, error) {
-				return `<html><body><p>Content</p></body></html>`, nil
-			},
-		},
-		RodFetcher: &mock.Fetcher{
-			FetchFn: func(_ context.Context, _ string) (string, error) {
-				return `<html><body><p>Content</p></body></html>`, nil
-			},
-		},
-		Prober: &mock.Prober{
-			DetectFn: func(_ string) locdoc.Framework {
-				return locdoc.FrameworkUnknown
-			},
-			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
-				return false, false
-			},
-		},
-		Extractor: &mock.Extractor{
-			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
-				return &locdoc.ExtractResult{
-					Title:       "Test",
-					ContentHTML: "<p>Content</p>",
-				}, nil
 			},
 		},
 		Converter: &mock.Converter{
@@ -63,34 +43,10 @@ func newTestCrawler() (*crawl.Crawler, *testMocks) {
 				return 1, nil
 			},
 		},
-		LinkSelectors: &mock.LinkSelectorRegistry{
-			GetForHTMLFn: func(_ string) locdoc.LinkSelector {
-				return &mock.LinkSelector{
-					ExtractLinksFn: func(_ string, _ string) ([]locdoc.DiscoveredLink, error) {
-						return nil, nil
-					},
-					NameFn: func() string { return "test" },
-				}
-			},
-		},
-		RateLimiter: &mock.DomainLimiter{
-			WaitFn: func(_ context.Context, _ string) error {
-				return nil
-			},
-		},
 	}
 
 	c := &crawl.Crawler{
-		Discoverer: &crawl.Discoverer{
-			HTTPFetcher:   m.HTTPFetcher,
-			RodFetcher:    m.RodFetcher,
-			Prober:        m.Prober,
-			Extractor:     m.Extractor,
-			LinkSelectors: m.LinkSelectors,
-			RateLimiter:   m.RateLimiter,
-			Concurrency:   1,
-			RetryDelays:   []time.Duration{0},
-		},
+		Discoverer:   d,
 		Sitemaps:     m.Sitemaps,
 		Converter:    m.Converter,
 		Documents:    m.Documents,
@@ -100,19 +56,15 @@ func newTestCrawler() (*crawl.Crawler, *testMocks) {
 	return c, m
 }
 
-// testMocks holds references to all mocks used by newTestCrawler.
+// crawlerMocks holds references to all mocks used by newTestCrawler.
+// Embeds discovererMocks to provide access to Discoverer mocks.
 // Tests can modify the function fields to customize behavior.
-type testMocks struct {
-	Sitemaps      *mock.SitemapService
-	HTTPFetcher   *mock.Fetcher
-	RodFetcher    *mock.Fetcher
-	Prober        *mock.Prober
-	Extractor     *mock.Extractor
-	Converter     *mock.Converter
-	Documents     *mock.DocumentService
-	TokenCounter  *mock.TokenCounter
-	LinkSelectors *mock.LinkSelectorRegistry
-	RateLimiter   *mock.DomainLimiter
+type crawlerMocks struct {
+	*discovererMocks
+	Sitemaps     *mock.SitemapService
+	Converter    *mock.Converter
+	Documents    *mock.DocumentService
+	TokenCounter *mock.TokenCounter
 }
 
 func TestCrawler_EmbedsDiscoverer(t *testing.T) {
