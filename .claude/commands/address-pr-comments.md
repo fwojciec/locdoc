@@ -12,13 +12,10 @@ Git status: !`git status --short`
 
 ### 1. Fetch PR Comments
 
-Get repo and PR info:
+Get the PR number, then fetch comments:
 ```bash
-# Get owner/repo (for API calls)
-REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
-
-# Get PR number
-PR_NUM=$(gh pr view --json number -q '.number')
+# Get PR number for current branch
+gh pr view --json number -q '.number'
 ```
 
 Fetch all comments (both review comments and inline/code comments):
@@ -26,8 +23,9 @@ Fetch all comments (both review comments and inline/code comments):
 # General PR comments
 gh pr view --comments
 
-# Inline code review comments (note: {owner}/{repo} auto-substitutes)
-gh api repos/{owner}/{repo}/pulls/$PR_NUM/comments
+# Inline code review comments
+# Note: {owner}/{repo} is literal - gh api auto-substitutes it
+gh api repos/{owner}/{repo}/pulls/91/comments
 ```
 
 ### 2. Present Summary
@@ -65,18 +63,27 @@ For changes you decide to make:
 
 ### 5. Respond Inline
 
-For EVERY inline code review comment, reply using the `/replies` endpoint:
+For EVERY inline code review comment, reply using the `/replies` endpoint.
+
+**Critical syntax rules for `gh api`:**
+- `{owner}/{repo}` is a **literal placeholder** - type it exactly as shown, `gh api` auto-substitutes it
+- Do NOT replace `{owner}/{repo}` with the actual repo name
+- DO replace `$PR_NUM` and `$COMMENT_ID` with actual numeric values
+
 ```bash
-# Note: {owner}/{repo} auto-substitutes, but $PR_NUM and $COMMENT_ID must be real values
-gh api repos/{owner}/{repo}/pulls/$PR_NUM/comments/$COMMENT_ID/replies \
-  -f body="Your response"
+# CORRECT - {owner}/{repo} is literal, 91 and 2637435882 are actual values
+gh api repos/{owner}/{repo}/pulls/91/comments/2637435882/replies \
+  -f body="Done - description of change"
+
+# WRONG - don't hardcode the repo path
+gh api repos/fwojciec/locdoc/pulls/91/comments/2637435882/replies ...
 ```
 
-**Important**: The `$COMMENT_ID` must be the numeric `id` field from the comment JSON (e.g., `2637288064`), not a placeholder.
+The `$COMMENT_ID` is the numeric `id` field from the comment JSON (e.g., `2637435882`).
 
 For general PR comments (not inline code comments):
 ```bash
-gh pr comment $PR_NUM --body "Your response"
+gh pr comment 91 --body "Your response"
 ```
 
 Response format for each comment:
