@@ -87,6 +87,20 @@ func BuildUserPrompt(docs []*locdoc.Document, question string) string {
 		fmt.Fprintf(&sb, "<index>%d</index>\n", i+1)
 		fmt.Fprintf(&sb, "<title>%s</title>\n", title)
 		fmt.Fprintf(&sb, "<source>%s</source>\n", doc.SourceURL)
+
+		// Extract and include sections if present
+		sections := locdoc.ExtractSections(doc.Content)
+		if len(sections) > 0 {
+			sb.WriteString("<sections>")
+			for j, sec := range sections {
+				if j > 0 {
+					sb.WriteString(", ")
+				}
+				fmt.Fprintf(&sb, "%s (#%s)", sec.Title, sec.Anchor)
+			}
+			sb.WriteString("</sections>\n")
+		}
+
 		fmt.Fprintf(&sb, "<content>%s</content>\n", doc.Content)
 		sb.WriteString("</document>\n")
 	}

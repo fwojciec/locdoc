@@ -196,3 +196,48 @@ func TestBuildUserPrompt_DoesNotContainSystemInstruction(t *testing.T) {
 
 	assert.NotContains(t, prompt, "You are a helpful assistant")
 }
+
+func TestBuildUserPrompt_IncludesSectionsFromContent(t *testing.T) {
+	t.Parallel()
+
+	docs := []*locdoc.Document{{
+		Title:     "API Reference",
+		SourceURL: "https://example.com/api",
+		Content:   "# Introduction\n\nSome intro.\n\n## Getting Started\n\nFirst steps.",
+	}}
+
+	prompt := gemini.BuildUserPrompt(docs, "How do I get started?")
+
+	assert.Contains(t, prompt, "<sections>")
+	assert.Contains(t, prompt, "</sections>")
+	assert.Contains(t, prompt, "Introduction")
+	assert.Contains(t, prompt, "Getting Started")
+}
+
+func TestBuildUserPrompt_SectionsIncludeAnchors(t *testing.T) {
+	t.Parallel()
+
+	docs := []*locdoc.Document{{
+		Title:     "Guide",
+		SourceURL: "https://example.com/guide",
+		Content:   "# Getting Started\n\nContent here.",
+	}}
+
+	prompt := gemini.BuildUserPrompt(docs, "question")
+
+	assert.Contains(t, prompt, "getting-started")
+}
+
+func TestBuildUserPrompt_NoSectionsTagWhenNoHeadings(t *testing.T) {
+	t.Parallel()
+
+	docs := []*locdoc.Document{{
+		Title:     "Plain Doc",
+		SourceURL: "https://example.com/plain",
+		Content:   "Just plain text without headings.",
+	}}
+
+	prompt := gemini.BuildUserPrompt(docs, "question")
+
+	assert.NotContains(t, prompt, "<sections>")
+}
