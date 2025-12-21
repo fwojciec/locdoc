@@ -597,7 +597,7 @@ func TestDiscoverURLs(t *testing.T) {
 			context.Background(),
 			"https://example.com/docs/",
 			nil,
-			httpFetcher, // Default fetcher (used when no probe options)
+			httpFetcher, // Fallback fetcher (overridden by probe options)
 			linkSelectors,
 			rateLimiter,
 			crawl.WithHTTPFetcher(httpFetcher),
@@ -662,7 +662,7 @@ func TestDiscoverURLs(t *testing.T) {
 			context.Background(),
 			"https://example.com/docs/",
 			nil,
-			httpFetcher, // Default fetcher
+			httpFetcher, // Fallback fetcher (overridden by probe options)
 			linkSelectors,
 			rateLimiter,
 			crawl.WithHTTPFetcher(httpFetcher),
@@ -744,7 +744,7 @@ func TestDiscoverURLs(t *testing.T) {
 			context.Background(),
 			"https://example.com/docs/",
 			nil,
-			httpFetcher, // Default fetcher
+			httpFetcher, // Fallback fetcher (overridden by probe options)
 			linkSelectors,
 			rateLimiter,
 			crawl.WithHTTPFetcher(httpFetcher),
@@ -758,6 +758,83 @@ func TestDiscoverURLs(t *testing.T) {
 		// Probe: HTTP once, Rod once (for comparison), then Rod for pages = 1+1+2
 		assert.Equal(t, 1, httpFetchCalls, "should use HTTP fetcher for probe only")
 		assert.Equal(t, 3, rodFetchCalls, "should use Rod fetcher for comparison probe and all pages")
+	})
+
+	t.Run("probe uses HTTP fetcher for unknown framework with similar content", func(t *testing.T) {
+		t.Parallel()
+
+		var httpFetchCalls, rodFetchCalls int
+		// Both fetchers return similar content
+		html := `<html><body><p>Same content from both fetchers</p></body></html>`
+
+		httpFetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, _ string) (string, error) {
+				httpFetchCalls++
+				return html, nil
+			},
+		}
+		rodFetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, _ string) (string, error) {
+				rodFetchCalls++
+				return html, nil
+			},
+		}
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkUnknown
+			},
+			RequiresJSFn: func(f locdoc.Framework) (bool, bool) {
+				return false, false // Unknown framework
+			},
+		}
+		// Extractor returns same content for both - no significant difference
+		extractor := &mock.Extractor{
+			ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{
+					Title:       "Test",
+					ContentHTML: "<p>Same content from both fetchers</p>",
+				}, nil
+			},
+		}
+		linkSelectors := &mock.LinkSelectorRegistry{
+			GetForHTMLFn: func(_ string) locdoc.LinkSelector {
+				return &mock.LinkSelector{
+					ExtractLinksFn: func(_ string, baseURL string) ([]locdoc.DiscoveredLink, error) {
+						if baseURL == "https://example.com/docs/" {
+							return []locdoc.DiscoveredLink{
+								{URL: "https://example.com/docs/page1", Priority: locdoc.PriorityNavigation},
+							}, nil
+						}
+						return nil, nil
+					},
+					NameFn: func() string { return "test" },
+				}
+			},
+		}
+		rateLimiter := &mock.DomainLimiter{
+			WaitFn: func(_ context.Context, _ string) error {
+				return nil
+			},
+		}
+
+		urls, err := crawl.DiscoverURLs(
+			context.Background(),
+			"https://example.com/docs/",
+			nil,
+			httpFetcher, // Fallback fetcher (overridden by probe options)
+			linkSelectors,
+			rateLimiter,
+			crawl.WithHTTPFetcher(httpFetcher),
+			crawl.WithRodFetcher(rodFetcher),
+			crawl.WithProber(prober),
+			crawl.WithExtractor(extractor),
+		)
+
+		require.NoError(t, err)
+		assert.Len(t, urls, 2)
+		// Probe: HTTP once, Rod once (for comparison), content is similar so use HTTP for pages
+		assert.Equal(t, 3, httpFetchCalls, "should use HTTP fetcher for probe, comparison, and all pages")
+		assert.Equal(t, 1, rodFetchCalls, "should use Rod fetcher only for comparison")
 	})
 
 	t.Run("probe falls back to Rod when HTTP probe fails", func(t *testing.T) {
@@ -810,7 +887,7 @@ func TestDiscoverURLs(t *testing.T) {
 			context.Background(),
 			"https://example.com/docs/",
 			nil,
-			httpFetcher, // Default fetcher
+			httpFetcher, // Fallback fetcher (overridden by probe options)
 			linkSelectors,
 			rateLimiter,
 			crawl.WithHTTPFetcher(httpFetcher),

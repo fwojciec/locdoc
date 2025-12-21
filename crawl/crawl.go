@@ -119,6 +119,11 @@ func (c *Crawler) probeFetcher(ctx context.Context, probeURL string) locdoc.Fetc
 	}
 
 	// Unknown framework: compare HTTP vs Rod content
+	// Skip comparison if no extractor - fall back to Rod (safer for JS sites)
+	if c.Extractor == nil {
+		return c.RodFetcher
+	}
+
 	rodHTML, rodErr := c.RodFetcher.Fetch(ctx, probeURL)
 	if rodErr != nil {
 		// Rod failed, use HTTP
