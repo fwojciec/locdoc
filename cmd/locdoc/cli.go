@@ -12,15 +12,16 @@ import (
 
 // Dependencies holds all services and configuration for command execution.
 type Dependencies struct {
-	Ctx       context.Context
-	Stdout    io.Writer
-	Stderr    io.Writer
-	DB        *sqlite.DB
-	Projects  locdoc.ProjectService
-	Documents locdoc.DocumentService
-	Sitemaps  locdoc.SitemapService
-	Crawler   *crawl.Crawler
-	Asker     locdoc.Asker
+	Ctx        context.Context
+	Stdout     io.Writer
+	Stderr     io.Writer
+	DB         *sqlite.DB
+	Projects   locdoc.ProjectService
+	Documents  locdoc.DocumentService
+	Sitemaps   locdoc.SitemapService
+	Crawler    *crawl.Crawler
+	Discoverer *crawl.Discoverer
+	Asker      locdoc.Asker
 }
 
 // CLI defines the command-line interface structure for Kong.
