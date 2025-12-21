@@ -21,37 +21,42 @@ var _ locdoc.Fetcher = (*Fetcher)(nil)
 
 // Fetcher retrieves HTML content from URLs using HTTP requests.
 // Unlike rod.Fetcher, this does not execute JavaScript and is suitable
-// for static sites only.
+// for static sites only. Fetcher is safe for concurrent use by multiple
+// goroutines.
 type Fetcher struct {
-	client  *http.Client
+	client *http.Client
+}
+
+// config holds the configuration options for a Fetcher.
+type config struct {
 	timeout time.Duration
 }
 
 // Option configures a Fetcher.
-type Option func(*Fetcher)
+type Option func(*config)
 
 // WithTimeout sets the timeout for HTTP requests.
 // Defaults to DefaultFetchTimeout (10s) if not specified.
 func WithTimeout(d time.Duration) Option {
-	return func(f *Fetcher) {
-		f.timeout = d
+	return func(c *config) {
+		c.timeout = d
 	}
 }
 
 // NewFetcher creates a new HTTP-based Fetcher.
 func NewFetcher(opts ...Option) *Fetcher {
-	f := &Fetcher{
+	cfg := &config{
 		timeout: DefaultFetchTimeout,
 	}
 	for _, opt := range opts {
-		opt(f)
+		opt(cfg)
 	}
 
-	f.client = &http.Client{
-		Timeout: f.timeout,
+	return &Fetcher{
+		client: &http.Client{
+			Timeout: cfg.timeout,
+		},
 	}
-
-	return f
 }
 
 // Fetch retrieves the HTML content from the given URL.
@@ -68,7 +73,9 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP %d for %s", resp.StatusCode, url)
+		// Drain body to enable connection reuse
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return "", fmt.Errorf("HTTP %d %s for %s", resp.StatusCode, http.StatusText(resp.StatusCode), url)
 	}
 
 	body, err := io.ReadAll(resp.Body)
