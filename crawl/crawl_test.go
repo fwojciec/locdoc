@@ -181,6 +181,14 @@ func TestCrawler_CrawlProject(t *testing.T) {
 			},
 			HTTPFetcher: &mock.Fetcher{FetchFn: fetchFn},
 			RodFetcher:  &mock.Fetcher{FetchFn: fetchFn},
+			Prober: &mock.Prober{
+				DetectFn: func(_ string) locdoc.Framework {
+					return locdoc.FrameworkSphinx
+				},
+				RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+					return false, true
+				},
+			},
 			Extractor: &mock.Extractor{
 				ExtractFn: func(html string) (*locdoc.ExtractResult, error) {
 					return &locdoc.ExtractResult{
@@ -241,7 +249,8 @@ func TestCrawler_CrawlProject(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		assert.Equal(t, 2, result.Saved, "should save seed URL and discovered page")
-		assert.Equal(t, 2, fetchCalls, "should fetch seed URL and discovered page")
+		// 3 fetches: 1 for probe + 2 for crawling (seed + discovered page)
+		assert.Equal(t, 3, fetchCalls, "should fetch for probe and both pages")
 	})
 
 	t.Run("recursive crawl respects path prefix scope", func(t *testing.T) {

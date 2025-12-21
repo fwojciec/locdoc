@@ -76,10 +76,20 @@ func TestAddCmd_Run(t *testing.T) {
 			},
 		}
 
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx
+			},
+			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+				return false, true
+			},
+		}
+
 		crawler := &crawl.Crawler{
 			Sitemaps:     sitemaps,
 			HTTPFetcher:  fetcher,
 			RodFetcher:   fetcher,
+			Prober:       prober,
 			Extractor:    extractor,
 			Converter:    converter,
 			Documents:    documents,
@@ -227,10 +237,20 @@ func TestAddCmd_Run(t *testing.T) {
 			},
 		}
 
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx
+			},
+			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+				return false, true
+			},
+		}
+
 		crawler := &crawl.Crawler{
 			Sitemaps:    sitemaps,
 			HTTPFetcher: fetcher,
 			RodFetcher:  fetcher,
+			Prober:      prober,
 			Extractor:   extractor,
 			Converter:   converter,
 			Documents:   documents,
@@ -331,10 +351,20 @@ func TestAddCmd_Run(t *testing.T) {
 			},
 		}
 
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx
+			},
+			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+				return false, true
+			},
+		}
+
 		crawler := &crawl.Crawler{
 			Sitemaps:      sitemaps,
 			HTTPFetcher:   fetcher,
 			RodFetcher:    fetcher,
+			Prober:        prober,
 			Extractor:     extractor,
 			Converter:     converter,
 			Documents:     documents,
@@ -432,15 +462,33 @@ func TestAddCmd_Run(t *testing.T) {
 		stdout := &bytes.Buffer{}
 		stderr := &bytes.Buffer{}
 
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx
+			},
+			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+				return false, true
+			},
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Test</p>"}, nil
+			},
+		}
+
 		deps := &main.Dependencies{
 			Ctx:           context.Background(),
 			Stdout:        stdout,
 			Stderr:        stderr,
 			Projects:      projects,
 			Sitemaps:      sitemaps,
-			Fetcher:       fetcher,
 			LinkSelectors: linkSelectors,
 			RateLimiter:   rateLimiter,
+			HTTPFetcher:   fetcher,
+			RodFetcher:    fetcher,
+			Prober:        prober,
+			Extractor:     extractor,
 		}
 
 		cmd := &main.AddCmd{
@@ -518,14 +566,32 @@ func TestAddCmd_Run(t *testing.T) {
 			},
 		}
 
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx
+			},
+			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+				return false, true
+			},
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Test</p>"}, nil
+			},
+		}
+
 		deps := &main.Dependencies{
 			Ctx:           context.Background(),
 			Stdout:        stdout,
 			Stderr:        &bytes.Buffer{},
 			Sitemaps:      sitemaps,
-			Fetcher:       fetcher,
 			LinkSelectors: linkSelectors,
 			RateLimiter:   rateLimiter,
+			HTTPFetcher:   fetcher,
+			RodFetcher:    fetcher,
+			Prober:        prober,
+			Extractor:     extractor,
 		}
 
 		cmd := &main.AddCmd{
@@ -598,14 +664,32 @@ func TestAddCmd_Run(t *testing.T) {
 		loggingFetcher := rod.NewLoggingFetcher(fetcher, logger)
 		loggingRegistry := goquery.NewLoggingRegistry(linkSelectors, detector, logger)
 
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx
+			},
+			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+				return false, true
+			},
+		}
+
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Test", ContentHTML: "<p>Test</p>"}, nil
+			},
+		}
+
 		deps := &main.Dependencies{
 			Ctx:           context.Background(),
 			Stdout:        stdout,
 			Stderr:        stderr,
 			Sitemaps:      loggingSitemaps,
-			Fetcher:       loggingFetcher,
 			LinkSelectors: loggingRegistry,
 			RateLimiter:   rateLimiter,
+			HTTPFetcher:   loggingFetcher,
+			RodFetcher:    loggingFetcher,
+			Prober:        prober,
+			Extractor:     extractor,
 		}
 
 		cmd := &main.AddCmd{
@@ -707,10 +791,20 @@ func TestAddCmd_Run(t *testing.T) {
 			},
 		}
 
+		prober := &mock.Prober{
+			DetectFn: func(_ string) locdoc.Framework {
+				return locdoc.FrameworkSphinx
+			},
+			RequiresJSFn: func(_ locdoc.Framework) (bool, bool) {
+				return false, true
+			},
+		}
+
 		crawler := &crawl.Crawler{
 			Sitemaps:    sitemaps,
 			HTTPFetcher: fetcher,
 			RodFetcher:  fetcher,
+			Prober:      prober,
 			Extractor:   extractor,
 			Converter:   converter,
 			Documents:   documents,

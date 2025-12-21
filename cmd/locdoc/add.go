@@ -47,8 +47,10 @@ func (c *AddCmd) Run(deps *Dependencies) error {
 
 		// Fall back to recursive discovery if sitemap returns no URLs
 		// Use streaming callback to print URLs as they're discovered
-		if deps.Fetcher != nil && deps.LinkSelectors != nil && deps.RateLimiter != nil {
-			_, err = crawl.DiscoverURLs(deps.Ctx, c.URL, urlFilter, deps.Fetcher, deps.LinkSelectors, deps.RateLimiter,
+		if deps.LinkSelectors != nil && deps.RateLimiter != nil && deps.HTTPFetcher != nil && deps.RodFetcher != nil && deps.Prober != nil && deps.Extractor != nil {
+			_, err = crawl.DiscoverURLs(deps.Ctx, c.URL, urlFilter,
+				deps.LinkSelectors, deps.RateLimiter,
+				deps.HTTPFetcher, deps.RodFetcher, deps.Prober, deps.Extractor,
 				crawl.WithConcurrency(c.Concurrency),
 				crawl.WithOnURL(func(url string) {
 					fmt.Fprintln(deps.Stdout, url)
