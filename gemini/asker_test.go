@@ -80,7 +80,32 @@ func TestBuildConfig_SetsSystemInstruction(t *testing.T) {
 
 	require.NotNil(t, config.SystemInstruction)
 	require.Len(t, config.SystemInstruction.Parts, 1)
-	assert.Contains(t, config.SystemInstruction.Parts[0].Text, "helpful assistant")
+
+	instruction := config.SystemInstruction.Parts[0].Text
+	assert.Contains(t, instruction, "documentation navigator")
+	assert.NotContains(t, instruction, "helpful assistant")
+}
+
+func TestBuildConfig_SystemInstructionHasConstraints(t *testing.T) {
+	t.Parallel()
+
+	config := gemini.BuildConfig()
+	instruction := config.SystemInstruction.Parts[0].Text
+
+	// Core constraints from research
+	assert.Contains(t, instruction, "do NOT provide solutions")
+	assert.Contains(t, instruction, "do NOT generate novel")
+}
+
+func TestBuildConfig_SystemInstructionHasInstructionHierarchy(t *testing.T) {
+	t.Parallel()
+
+	config := gemini.BuildConfig()
+	instruction := config.SystemInstruction.Parts[0].Text
+
+	// Instruction hierarchy with refusal pattern
+	assert.Contains(t, instruction, "CORE CONSTRAINTS")
+	assert.Contains(t, instruction, "decline")
 }
 
 func TestBuildConfig_SetsTemperature(t *testing.T) {
@@ -109,6 +134,19 @@ func TestBuildUserPrompt_XMLDocumentStructure(t *testing.T) {
 	assert.Contains(t, prompt, "<title>Getting Started</title>")
 	assert.Contains(t, prompt, "<source>https://htmx.org/docs/</source>")
 	assert.Contains(t, prompt, "<content>HTMX is a library.</content>")
+}
+
+func TestBuildUserPrompt_IncludesDocTags(t *testing.T) {
+	t.Parallel()
+
+	docs := []*locdoc.Document{
+		{Title: "Getting Started", SourceURL: "https://htmx.org/docs/", Content: "HTMX is a library."},
+	}
+
+	prompt := gemini.BuildUserPrompt(docs, "What is HTMX?")
+
+	// Research shows [DOC: title] tags create explicit anchors for citations
+	assert.Contains(t, prompt, "[DOC: Getting Started]")
 }
 
 func TestBuildUserPrompt_TitleFallsBackToSourceURL(t *testing.T) {
@@ -160,15 +198,29 @@ func TestBuildUserPrompt_TrailingInstructions(t *testing.T) {
 	assert.Contains(t, prompt, "</instructions>")
 }
 
-func TestBuildUserPrompt_InstructionsSpecifySourcesFormat(t *testing.T) {
+func TestBuildUserPrompt_InstructionsRequireEvidenceFirstFormat(t *testing.T) {
 	t.Parallel()
 
 	docs := []*locdoc.Document{{Title: "Doc", SourceURL: "https://example.com", Content: "Content"}}
 
 	prompt := gemini.BuildUserPrompt(docs, "question")
 
-	assert.Contains(t, prompt, "---")
+	// Evidence-first response structure
+	assert.Contains(t, prompt, "RELEVANT DOCUMENTATION")
+	assert.Contains(t, prompt, "ANSWER BASED ON ABOVE")
+	assert.Contains(t, prompt, "NOT COVERED")
+}
+
+func TestBuildUserPrompt_InstructionsRequireURLCitations(t *testing.T) {
+	t.Parallel()
+
+	docs := []*locdoc.Document{{Title: "Doc", SourceURL: "https://example.com", Content: "Content"}}
+
+	prompt := gemini.BuildUserPrompt(docs, "question")
+
+	// Citations should use URLs with anchors
 	assert.Contains(t, prompt, "Sources:")
+	assert.Contains(t, prompt, "URL#anchor")
 }
 
 func TestBuildUserPrompt_SandwichOrder(t *testing.T) {
