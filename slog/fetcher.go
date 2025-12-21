@@ -1,4 +1,5 @@
-package rod
+// Package slog provides logging wrappers for locdoc interfaces using log/slog.
+package slog
 
 import (
 	"context"

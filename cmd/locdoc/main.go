@@ -16,6 +16,7 @@ import (
 	"github.com/fwojciec/locdoc/htmltomarkdown"
 	lochttp "github.com/fwojciec/locdoc/http"
 	"github.com/fwojciec/locdoc/rod"
+	locslog "github.com/fwojciec/locdoc/slog"
 	"github.com/fwojciec/locdoc/sqlite"
 	"github.com/fwojciec/locdoc/trafilatura"
 	"google.golang.org/genai"
@@ -139,19 +140,21 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		// Use interfaces to allow wrapping with logging decorators
 		var activeLinkSelectors locdoc.LinkSelectorRegistry = linkSelectors
 		var activeRodFetcher locdoc.Fetcher = rodFetcher
+		var activeHTTPFetcher locdoc.Fetcher = httpFetcher
 
 		// Wrap services with logging decorators when debug is enabled
 		if cli.Add.Debug {
 			logger := slog.New(slog.NewTextHandler(stderr, nil))
 			deps.Sitemaps = lochttp.NewLoggingSitemapService(deps.Sitemaps, logger)
-			activeRodFetcher = rod.NewLoggingFetcher(rodFetcher, logger)
+			activeRodFetcher = locslog.NewLoggingFetcher(rodFetcher, logger)
+			activeHTTPFetcher = locslog.NewLoggingFetcher(httpFetcher, logger)
 			activeLinkSelectors = goquery.NewLoggingRegistry(linkSelectors, detector, logger)
 		}
 
 		// Create Crawler with core dependencies (used by both preview and full crawl)
 		deps.Crawler = &crawl.Crawler{
 			Sitemaps:      deps.Sitemaps,
-			HTTPFetcher:   httpFetcher,
+			HTTPFetcher:   activeHTTPFetcher,
 			RodFetcher:    activeRodFetcher,
 			Prober:        detector,
 			Extractor:     extractor,

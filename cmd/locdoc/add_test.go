@@ -14,7 +14,7 @@ import (
 	"github.com/fwojciec/locdoc/goquery"
 	lochttp "github.com/fwojciec/locdoc/http"
 	"github.com/fwojciec/locdoc/mock"
-	"github.com/fwojciec/locdoc/rod"
+	locslog "github.com/fwojciec/locdoc/slog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -665,7 +665,7 @@ func TestAddCmd_Run(t *testing.T) {
 
 		// Wrap services with logging decorators (simulating main.go wiring when Debug=true)
 		loggingSitemaps := lochttp.NewLoggingSitemapService(sitemaps, logger)
-		loggingFetcher := rod.NewLoggingFetcher(fetcher, logger)
+		loggingFetcher := locslog.NewLoggingFetcher(fetcher, logger)
 		loggingRegistry := goquery.NewLoggingRegistry(linkSelectors, detector, logger)
 
 		prober := &mock.Prober{

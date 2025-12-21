@@ -1,4 +1,4 @@
-package rod_test
+package slog_test
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/fwojciec/locdoc/mock"
-	"github.com/fwojciec/locdoc/rod"
+	locslog "github.com/fwojciec/locdoc/slog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +27,7 @@ func TestLoggingFetcher_Fetch(t *testing.T) {
 			},
 		}
 
-		fetcher := rod.NewLoggingFetcher(inner, logger)
+		fetcher := locslog.NewLoggingFetcher(inner, logger)
 		html, err := fetcher.Fetch(context.Background(), "https://example.com/docs")
 
 		require.NoError(t, err)
@@ -50,7 +50,7 @@ func TestLoggingFetcher_Fetch(t *testing.T) {
 			},
 		}
 
-		fetcher := rod.NewLoggingFetcher(inner, logger)
+		fetcher := locslog.NewLoggingFetcher(inner, logger)
 		_, err := fetcher.Fetch(context.Background(), "https://example.com/docs")
 
 		require.Error(t, err)
@@ -76,7 +76,7 @@ func TestLoggingFetcher_Close(t *testing.T) {
 			},
 		}
 
-		fetcher := rod.NewLoggingFetcher(inner, logger)
+		fetcher := locslog.NewLoggingFetcher(inner, logger)
 		err := fetcher.Close()
 
 		require.NoError(t, err)
