@@ -90,6 +90,16 @@ func (c *Crawler) probeFetcher(ctx context.Context, probeURL string) locdoc.Fetc
 		return c.HTTPFetcher
 	}
 
+	// HTTPFetcher required for probing; fall back to Rod if unavailable
+	if c.HTTPFetcher == nil {
+		return c.RodFetcher
+	}
+
+	// RodFetcher required for fallback; use HTTP-only if unavailable
+	if c.RodFetcher == nil {
+		return c.HTTPFetcher
+	}
+
 	// Probe with HTTP
 	httpHTML, httpErr := c.HTTPFetcher.Fetch(ctx, probeURL)
 	if httpErr != nil {
