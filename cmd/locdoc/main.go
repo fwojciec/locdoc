@@ -117,12 +117,14 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 
 	// Wire command-specific dependencies based on command
 	if cmd == "add" {
-		fetcher, err := rod.NewFetcher(rod.WithFetchTimeout(cli.Add.Timeout))
+		rodFetcher, err := rod.NewFetcher(rod.WithFetchTimeout(cli.Add.Timeout))
 		if err != nil {
 			fmt.Fprintln(stderr, "Hint: Chrome or Chromium must be installed")
 			return fmt.Errorf("failed to start browser: %w", err)
 		}
-		defer fetcher.Close()
+		defer rodFetcher.Close()
+
+		httpFetcher := lochttp.NewFetcher(lochttp.WithTimeout(cli.Add.Timeout))
 
 		// Create link selector registry for recursive crawling fallback
 		detector := goquery.NewDetector()
@@ -134,7 +136,7 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		rateLimiter := crawl.NewDomainLimiter(1.0)
 
 		// Wire discovery dependencies for preview mode (recursive fallback)
-		deps.Fetcher = fetcher
+		deps.Fetcher = rodFetcher
 		deps.LinkSelectors = linkSelectors
 		deps.RateLimiter = rateLimiter
 
@@ -155,7 +157,9 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 
 			deps.Crawler = &crawl.Crawler{
 				Sitemaps:      deps.Sitemaps,
-				Fetcher:       fetcher,
+				HTTPFetcher:   httpFetcher,
+				RodFetcher:    rodFetcher,
+				Prober:        detector,
 				Extractor:     trafilatura.NewExtractor(),
 				Converter:     htmltomarkdown.NewConverter(),
 				Documents:     m.DocumentService,

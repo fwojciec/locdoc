@@ -27,9 +27,7 @@ func TestRecursiveCrawl_Concurrency(t *testing.T) {
 		const numPages = 10
 		const concurrency = 3
 
-		c, m := newTestCrawler()
-		c.Concurrency = concurrency
-		m.Fetcher.FetchFn = func(_ context.Context, _ string) (string, error) {
+		fetchFn := func(_ context.Context, _ string) (string, error) {
 			// Track concurrent fetches using atomic compare-and-swap for max
 			current := currentConcurrent.Add(1)
 			for {
@@ -45,6 +43,11 @@ func TestRecursiveCrawl_Concurrency(t *testing.T) {
 			currentConcurrent.Add(-1)
 			return `<html><body><p>Content</p></body></html>`, nil
 		}
+
+		c, m := newTestCrawler()
+		c.Concurrency = concurrency
+		m.HTTPFetcher.FetchFn = fetchFn
+		m.RodFetcher.FetchFn = fetchFn
 		m.LinkSelectors.GetForHTMLFn = func(_ string) locdoc.LinkSelector {
 			return &mock.LinkSelector{
 				ExtractLinksFn: func(_ string, baseURL string) ([]locdoc.DiscoveredLink, error) {
@@ -91,7 +94,7 @@ func TestRecursiveCrawl_Concurrency(t *testing.T) {
 
 		c, m := newTestCrawler()
 		c.Concurrency = 5
-		m.Fetcher.FetchFn = func(_ context.Context, _ string) (string, error) {
+		m.RodFetcher.FetchFn = func(_ context.Context, _ string) (string, error) {
 			fetchCount.Add(1)
 			return `<html><body><p>Content</p></body></html>`, nil
 		}

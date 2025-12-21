@@ -78,7 +78,8 @@ func TestAddCmd_Run(t *testing.T) {
 
 		crawler := &crawl.Crawler{
 			Sitemaps:     sitemaps,
-			Fetcher:      fetcher,
+			HTTPFetcher:  fetcher,
+			RodFetcher:   fetcher,
 			Extractor:    extractor,
 			Converter:    converter,
 			Documents:    documents,
@@ -228,7 +229,8 @@ func TestAddCmd_Run(t *testing.T) {
 
 		crawler := &crawl.Crawler{
 			Sitemaps:    sitemaps,
-			Fetcher:     fetcher,
+			HTTPFetcher: fetcher,
+			RodFetcher:  fetcher,
 			Extractor:   extractor,
 			Converter:   converter,
 			Documents:   documents,
@@ -331,7 +333,8 @@ func TestAddCmd_Run(t *testing.T) {
 
 		crawler := &crawl.Crawler{
 			Sitemaps:      sitemaps,
-			Fetcher:       fetcher,
+			HTTPFetcher:   fetcher,
+			RodFetcher:    fetcher,
 			Extractor:     extractor,
 			Converter:     converter,
 			Documents:     documents,
@@ -706,7 +709,8 @@ func TestAddCmd_Run(t *testing.T) {
 
 		crawler := &crawl.Crawler{
 			Sitemaps:    sitemaps,
-			Fetcher:     fetcher,
+			HTTPFetcher: fetcher,
+			RodFetcher:  fetcher,
 			Extractor:   extractor,
 			Converter:   converter,
 			Documents:   documents,

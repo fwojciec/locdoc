@@ -7,7 +7,7 @@ import (
 	"github.com/fwojciec/locdoc"
 )
 
-var _ locdoc.FrameworkDetector = (*Detector)(nil)
+var _ locdoc.Prober = (*Detector)(nil)
 
 // Detector identifies documentation frameworks from HTML content.
 // It checks for framework-specific CSS classes, data attributes, meta tags,
