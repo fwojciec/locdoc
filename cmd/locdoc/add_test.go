@@ -478,17 +478,19 @@ func TestAddCmd_Run(t *testing.T) {
 		}
 
 		deps := &main.Dependencies{
-			Ctx:           context.Background(),
-			Stdout:        stdout,
-			Stderr:        stderr,
-			Projects:      projects,
-			Sitemaps:      sitemaps,
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   fetcher,
-			RodFetcher:    fetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Ctx:      context.Background(),
+			Stdout:   stdout,
+			Stderr:   stderr,
+			Projects: projects,
+			Sitemaps: sitemaps,
+			Crawler: &crawl.Crawler{
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   fetcher,
+				RodFetcher:    fetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 
 		cmd := &main.AddCmd{
@@ -582,16 +584,18 @@ func TestAddCmd_Run(t *testing.T) {
 		}
 
 		deps := &main.Dependencies{
-			Ctx:           context.Background(),
-			Stdout:        stdout,
-			Stderr:        &bytes.Buffer{},
-			Sitemaps:      sitemaps,
-			LinkSelectors: linkSelectors,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   fetcher,
-			RodFetcher:    fetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Ctx:      context.Background(),
+			Stdout:   stdout,
+			Stderr:   &bytes.Buffer{},
+			Sitemaps: sitemaps,
+			Crawler: &crawl.Crawler{
+				LinkSelectors: linkSelectors,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   fetcher,
+				RodFetcher:    fetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 
 		cmd := &main.AddCmd{
@@ -680,16 +684,18 @@ func TestAddCmd_Run(t *testing.T) {
 		}
 
 		deps := &main.Dependencies{
-			Ctx:           context.Background(),
-			Stdout:        stdout,
-			Stderr:        stderr,
-			Sitemaps:      loggingSitemaps,
-			LinkSelectors: loggingRegistry,
-			RateLimiter:   rateLimiter,
-			HTTPFetcher:   loggingFetcher,
-			RodFetcher:    loggingFetcher,
-			Prober:        prober,
-			Extractor:     extractor,
+			Ctx:      context.Background(),
+			Stdout:   stdout,
+			Stderr:   stderr,
+			Sitemaps: loggingSitemaps,
+			Crawler: &crawl.Crawler{
+				LinkSelectors: loggingRegistry,
+				RateLimiter:   rateLimiter,
+				HTTPFetcher:   loggingFetcher,
+				RodFetcher:    loggingFetcher,
+				Prober:        prober,
+				Extractor:     extractor,
+			},
 		}
 
 		cmd := &main.AddCmd{

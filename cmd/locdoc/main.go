@@ -134,43 +134,42 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 
 		// Create rate limiter for recursive crawling (1 request per second per domain)
 		rateLimiter := crawl.NewDomainLimiter(1.0)
+		extractor := trafilatura.NewExtractor()
 
-		// Wire discovery dependencies for preview mode (recursive fallback)
-		deps.LinkSelectors = linkSelectors
-		deps.RateLimiter = rateLimiter
-		deps.HTTPFetcher = httpFetcher
-		deps.RodFetcher = rodFetcher
-		deps.Prober = detector
-		deps.Extractor = trafilatura.NewExtractor()
+		// Use interfaces to allow wrapping with logging decorators
+		var activeLinkSelectors locdoc.LinkSelectorRegistry = linkSelectors
+		var activeRodFetcher locdoc.Fetcher = rodFetcher
 
 		// Wrap services with logging decorators when debug is enabled
 		if cli.Add.Debug {
 			logger := slog.New(slog.NewTextHandler(stderr, nil))
 			deps.Sitemaps = lochttp.NewLoggingSitemapService(deps.Sitemaps, logger)
-			deps.RodFetcher = rod.NewLoggingFetcher(deps.RodFetcher, logger)
-			deps.LinkSelectors = goquery.NewLoggingRegistry(deps.LinkSelectors, detector, logger)
+			activeRodFetcher = rod.NewLoggingFetcher(rodFetcher, logger)
+			activeLinkSelectors = goquery.NewLoggingRegistry(linkSelectors, detector, logger)
 		}
 
-		// Wire full Crawler only for non-preview mode
+		// Create Crawler with core dependencies (used by both preview and full crawl)
+		deps.Crawler = &crawl.Crawler{
+			Sitemaps:      deps.Sitemaps,
+			HTTPFetcher:   httpFetcher,
+			RodFetcher:    activeRodFetcher,
+			Prober:        detector,
+			Extractor:     extractor,
+			LinkSelectors: activeLinkSelectors,
+			RateLimiter:   rateLimiter,
+			Concurrency:   cli.Add.Concurrency,
+		}
+
+		// Add full crawl dependencies for non-preview mode
 		if !cli.Add.Preview {
 			tokenCounter, err := gemini.NewTokenCounter(tokenizerModel)
 			if err != nil {
 				return fmt.Errorf("failed to create token counter: %w", err)
 			}
 
-			deps.Crawler = &crawl.Crawler{
-				Sitemaps:      deps.Sitemaps,
-				HTTPFetcher:   httpFetcher,
-				RodFetcher:    rodFetcher,
-				Prober:        detector,
-				Extractor:     trafilatura.NewExtractor(),
-				Converter:     htmltomarkdown.NewConverter(),
-				Documents:     m.DocumentService,
-				TokenCounter:  tokenCounter,
-				LinkSelectors: linkSelectors,
-				RateLimiter:   rateLimiter,
-				Concurrency:   cli.Add.Concurrency,
-			}
+			deps.Crawler.Converter = htmltomarkdown.NewConverter()
+			deps.Crawler.Documents = m.DocumentService
+			deps.Crawler.TokenCounter = tokenCounter
 		}
 	}
 
