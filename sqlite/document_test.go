@@ -265,7 +265,7 @@ func TestDocumentService_FindDocuments(t *testing.T) {
 
 		docs, err := svc.FindDocuments(ctx, locdoc.DocumentFilter{
 			ProjectID: &project.ID,
-			SortBy:    "position",
+			SortBy:    locdoc.SortByPosition,
 		})
 		require.NoError(t, err)
 		require.Len(t, docs, 3)

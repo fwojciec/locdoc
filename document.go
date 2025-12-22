@@ -49,6 +49,15 @@ type DocumentService interface {
 	DeleteDocumentsByProject(ctx context.Context, projectID string) error
 }
 
+// SortOrder represents the sort order for document queries.
+type SortOrder string
+
+// SortOrder constants for DocumentFilter.
+const (
+	SortByFetchedAt SortOrder = "fetched_at"
+	SortByPosition  SortOrder = "position"
+)
+
 // DocumentFilter represents a filter for FindDocuments.
 type DocumentFilter struct {
 	ID        *string `json:"id"`
@@ -58,5 +67,5 @@ type DocumentFilter struct {
 	Offset int `json:"offset"`
 	Limit  int `json:"limit"`
 
-	SortBy string `json:"sortBy"` // "position" or "fetched_at"
+	SortBy SortOrder `json:"sortBy"`
 }
