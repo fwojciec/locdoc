@@ -12,38 +12,11 @@ AI coding assistants work well when they have access to library documentation. T
 
 The interface is intentionally minimal - a few straightforward commands that any agent can call without needing schema definitions or protocol negotiation.
 
-## Features
+## Requirements
 
-**Intelligent Content Extraction**
-- Removes navigation, footers, sidebars, and ads automatically using go-trafilatura
-- JavaScript rendering via headless Chrome for SPAs and dynamic content
-- Preserves document structure (headers, lists, code blocks, tables)
-
-**Local Storage**
-- All crawled documentation stored in SQLite (~/.locdoc/locdoc.db)
-- No account or cloud storage required for crawling
-
-**LLM-Powered Q&A**
-- Natural language queries against stored documentation
-- Uses Gemini 3 Flash for fast, accurate answers
-
-**Flexible Crawling**
-- Regex-based URL filtering to target specific sections
-- Configurable concurrency for rate-limited sites
-- Preview mode to verify filter patterns before crawling
-- Progress tracking with real-time feedback
-
-## Limitations
-
-- **Requires sitemap.xml** - Sites without a sitemap cannot be crawled
-- **No GitHub/git support** - Cannot crawl README files or wikis from repositories
-- **No incremental updates** - Re-crawling fetches all pages (use `--force`)
-- **Single LLM provider** - Currently only supports Google Gemini
-- **No semantic search** - All documents sent to LLM (works well for small-medium doc sites)
-
-## Status
-
-This project is written primarily by LLMs (Claude). Our goal is high-quality software, but this is alpha - expect bugs and edge cases we haven't covered yet. Contributions and bug reports welcome.
+- Go 1.21+ (for installation from source)
+- Google Chrome (only needed for JavaScript-rendered sites)
+- Gemini API key (for the `ask` command)
 
 ## Installation
 
@@ -51,23 +24,58 @@ This project is written primarily by LLMs (Claude). Our goal is high-quality sof
 go install github.com/fwojciec/locdoc/cmd/locdoc@latest
 ```
 
+## Features
+
+### Intelligent Crawling
+
+- **Automatic discovery** - Uses sitemap.xml when available, falls back to recursive link extraction
+- **Adaptive rendering** - Probes sites to detect if JavaScript rendering is needed; uses fast HTTP fetching for static sites
+- **Framework detection** - Recognizes common documentation frameworks for better link extraction
+- **Robust fetching** - Retry with exponential backoff, configurable timeouts
+
+### Content Extraction
+
+- Removes navigation, footers, sidebars automatically (go-trafilatura)
+- Preserves document structure: headers, lists, code blocks, tables
+- JavaScript rendering via headless Chrome when needed
+
+### Local Storage
+
+- SQLite database (`~/.locdoc/locdoc.db`)
+- No cloud dependencies for crawling
+
+### LLM Q&A
+
+- Natural language queries via Gemini Flash
+- Retrieval-focused prompts optimized for accuracy
+
 ## Usage
 
 ### Add a documentation project
 
 ```bash
-locdoc add htmx https://htmx.org/
+locdoc add <name> <url> [flags]
 ```
 
-This discovers pages via sitemap, fetches each page, extracts main content, converts to markdown, and stores in SQLite.
+This discovers pages via sitemap (or recursive crawling), fetches each page, extracts main content, converts to markdown, and stores in SQLite.
 
-Options:
-- `--preview` - Show discovered URLs without creating project
-- `--force` - Delete existing project first (useful for re-crawling)
-- `--filter <regex>` - Only include URLs matching pattern (can be repeated)
-- `-c, --concurrency N` - Concurrent fetch limit (default: 10)
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--preview` | Show discovered URLs without crawling |
+| `--force` | Delete existing project first (for re-crawling) |
+| `--filter` | URL path prefix filter (can be repeated) |
+| `-c, --concurrency N` | Concurrent fetch limit (default: 3) |
+| `--timeout` | Per-page fetch timeout |
+| `--debug` | Debug output in preview mode |
+
+**Examples:**
 
 ```bash
+# Crawl a documentation site
+locdoc add htmx https://htmx.org/
+
 # Preview what will be crawled
 locdoc add htmx https://htmx.org/ --preview
 
@@ -75,10 +83,10 @@ locdoc add htmx https://htmx.org/ --preview
 locdoc add htmx https://htmx.org/ --force
 
 # Filter to specific sections
-locdoc add htmx https://htmx.org/ --filter "/docs/" --filter "/examples/"
+locdoc add htmx https://htmx.org/ --filter /docs/ --filter /examples/
 
 # Limit concurrent fetches (useful for rate-limited sites)
-locdoc add htmx https://htmx.org/ -c 3
+locdoc add htmx https://htmx.org/ -c 2
 ```
 
 ### List registered projects
@@ -99,8 +107,6 @@ locdoc docs htmx --full
 
 ### Ask questions about documentation
 
-Requires `GEMINI_API_KEY` environment variable.
-
 ```bash
 locdoc ask htmx "How do I trigger a request on page load?"
 ```
@@ -113,8 +119,21 @@ locdoc delete htmx --force
 
 ## Configuration
 
-- **Database location**: `~/.locdoc/locdoc.db` by default, or set `LOCDOC_DB` environment variable
-- **API key**: Set `GEMINI_API_KEY` for the `ask` command
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `LOCDOC_DB` | Database path | `~/.locdoc/locdoc.db` |
+| `GEMINI_API_KEY` | Required for `ask` command | - |
+
+## Limitations
+
+- **No GitHub/git support** - Cannot crawl README files or wikis from repositories
+- **No incremental updates** - Re-crawling fetches all pages (use `--force`)
+- **Single LLM provider** - Currently only supports Google Gemini
+- **No semantic search** - All documents sent to LLM (works well for small-medium doc sites)
+
+## Status
+
+This project is written primarily by LLMs (Claude). Our goal is high-quality software, but this is alpha - expect bugs and edge cases we haven't covered yet. Contributions and bug reports welcome.
 
 ## License
 
