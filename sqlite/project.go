@@ -3,7 +3,6 @@ package sqlite
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
 	"time"
 
@@ -64,13 +63,13 @@ func (s *ProjectService) FindProjectByID(ctx context.Context, id string) (*locdo
 	}
 
 	var parseErr error
-	project.CreatedAt, parseErr = time.Parse(time.RFC3339, createdAt)
+	project.CreatedAt, parseErr = parseRFC3339(createdAt, "created_at")
 	if parseErr != nil {
-		return nil, fmt.Errorf("failed to parse created_at: %w", parseErr)
+		return nil, parseErr
 	}
-	project.UpdatedAt, parseErr = time.Parse(time.RFC3339, updatedAt)
+	project.UpdatedAt, parseErr = parseRFC3339(updatedAt, "updated_at")
 	if parseErr != nil {
-		return nil, fmt.Errorf("failed to parse updated_at: %w", parseErr)
+		return nil, parseErr
 	}
 
 	return &project, nil
@@ -94,14 +93,7 @@ func (s *ProjectService) FindProjects(ctx context.Context, filter locdoc.Project
 
 	query.WriteString(" ORDER BY created_at DESC")
 
-	if filter.Limit > 0 {
-		query.WriteString(" LIMIT ?")
-		args = append(args, filter.Limit)
-	}
-	if filter.Offset > 0 {
-		query.WriteString(" OFFSET ?")
-		args = append(args, filter.Offset)
-	}
+	appendPagination(&query, &args, filter.Limit, filter.Offset)
 
 	rows, err := s.db.QueryContext(ctx, query.String(), args...)
 	if err != nil {
@@ -120,13 +112,13 @@ func (s *ProjectService) FindProjects(ctx context.Context, filter locdoc.Project
 		}
 
 		var parseErr error
-		project.CreatedAt, parseErr = time.Parse(time.RFC3339, createdAt)
+		project.CreatedAt, parseErr = parseRFC3339(createdAt, "created_at")
 		if parseErr != nil {
-			return nil, fmt.Errorf("failed to parse created_at: %w", parseErr)
+			return nil, parseErr
 		}
-		project.UpdatedAt, parseErr = time.Parse(time.RFC3339, updatedAt)
+		project.UpdatedAt, parseErr = parseRFC3339(updatedAt, "updated_at")
 		if parseErr != nil {
-			return nil, fmt.Errorf("failed to parse updated_at: %w", parseErr)
+			return nil, parseErr
 		}
 
 		projects = append(projects, &project)

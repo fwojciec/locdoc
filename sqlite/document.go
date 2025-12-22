@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
-	"fmt"
 	"strings"
 	"time"
 
@@ -80,9 +79,9 @@ func (s *DocumentService) FindDocumentByID(ctx context.Context, id string) (*loc
 	}
 
 	var parseErr error
-	doc.FetchedAt, parseErr = time.Parse(time.RFC3339, fetchedAt)
+	doc.FetchedAt, parseErr = parseRFC3339(fetchedAt, "fetched_at")
 	if parseErr != nil {
-		return nil, fmt.Errorf("failed to parse fetched_at: %w", parseErr)
+		return nil, parseErr
 	}
 
 	return &doc, nil
@@ -115,14 +114,7 @@ func (s *DocumentService) FindDocuments(ctx context.Context, filter locdoc.Docum
 		query.WriteString(" ORDER BY fetched_at DESC")
 	}
 
-	if filter.Limit > 0 {
-		query.WriteString(" LIMIT ?")
-		args = append(args, filter.Limit)
-	}
-	if filter.Offset > 0 {
-		query.WriteString(" OFFSET ?")
-		args = append(args, filter.Offset)
-	}
+	appendPagination(&query, &args, filter.Limit, filter.Offset)
 
 	rows, err := s.db.QueryContext(ctx, query.String(), args...)
 	if err != nil {
@@ -141,9 +133,9 @@ func (s *DocumentService) FindDocuments(ctx context.Context, filter locdoc.Docum
 		}
 
 		var parseErr error
-		doc.FetchedAt, parseErr = time.Parse(time.RFC3339, fetchedAt)
+		doc.FetchedAt, parseErr = parseRFC3339(fetchedAt, "fetched_at")
 		if parseErr != nil {
-			return nil, fmt.Errorf("failed to parse fetched_at: %w", parseErr)
+			return nil, parseErr
 		}
 
 		docs = append(docs, &doc)
