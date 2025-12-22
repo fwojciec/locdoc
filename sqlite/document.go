@@ -108,7 +108,7 @@ func (s *DocumentService) FindDocuments(ctx context.Context, filter locdoc.Docum
 	}
 
 	switch filter.SortBy {
-	case "position":
+	case locdoc.SortByPosition:
 		query.WriteString(" ORDER BY position ASC")
 	default:
 		query.WriteString(" ORDER BY fetched_at DESC")

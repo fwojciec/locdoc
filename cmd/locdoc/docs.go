@@ -23,7 +23,7 @@ func (c *DocsCmd) Run(deps *Dependencies) error {
 
 	docs, err := deps.Documents.FindDocuments(deps.Ctx, locdoc.DocumentFilter{
 		ProjectID: &project.ID,
-		SortBy:    "position",
+		SortBy:    locdoc.SortByPosition,
 	})
 	if err != nil {
 		fmt.Fprintf(deps.Stderr, "error: %s\n", locdoc.ErrorMessage(err))
