@@ -230,7 +230,8 @@ func (s *SitemapService) processSitemap(ctx context.Context, sitemapURL string, 
 
 	root := doc.Root()
 	if root == nil {
-		return nil, fmt.Errorf("empty sitemap XML")
+		// Non-XML content (e.g., sitemap.txt) - skip gracefully
+		return nil, nil
 	}
 
 	// Check if this is a sitemap index

@@ -446,6 +446,64 @@ Sitemap: {{BASE}}/sitemap.xml
 	assert.Empty(t, urls, "should return empty URLs when sitemap doesn't exist")
 }
 
+func TestSitemapService_DiscoverURLs_SkipsNonXMLSitemaps(t *testing.T) {
+	t.Parallel()
+
+	// robots.txt references both XML and non-XML sitemaps
+	// Non-XML sitemaps (like sitemap.txt) should be skipped gracefully
+	robotsTxt := `User-agent: *
+Sitemap: {{BASE}}/sitemap.xml
+Sitemap: {{BASE}}/sitemap.txt
+`
+	sitemapXML := `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{{BASE}}/docs/intro</loc></url>
+</urlset>`
+
+	// sitemap.txt is a plain text file, not XML
+	sitemapTxt := `https://example.com/page1
+https://example.com/page2
+`
+
+	srv := newTestServer(t, map[string]string{
+		"/robots.txt":  robotsTxt,
+		"/sitemap.xml": sitemapXML,
+		"/sitemap.txt": sitemapTxt,
+	})
+	defer srv.Close()
+
+	svc := locdochttp.NewSitemapService(srv.Client())
+	urls, err := svc.DiscoverURLs(context.Background(), srv.URL, nil)
+
+	require.NoError(t, err, "non-XML sitemap should be skipped, not cause error")
+	assert.Len(t, urls, 1)
+	assert.Contains(t, urls, srv.URL+"/docs/intro")
+}
+
+func TestSitemapService_DiscoverURLs_OnlyNonXMLSitemaps(t *testing.T) {
+	t.Parallel()
+
+	// robots.txt references only non-XML sitemaps - should return empty, not error
+	robotsTxt := `User-agent: *
+Sitemap: {{BASE}}/sitemap.txt
+`
+	sitemapTxt := `https://example.com/page1
+https://example.com/page2
+`
+
+	srv := newTestServer(t, map[string]string{
+		"/robots.txt":  robotsTxt,
+		"/sitemap.txt": sitemapTxt,
+	})
+	defer srv.Close()
+
+	svc := locdochttp.NewSitemapService(srv.Client())
+	urls, err := svc.DiscoverURLs(context.Background(), srv.URL, nil)
+
+	require.NoError(t, err, "only non-XML sitemaps should not cause error")
+	assert.Empty(t, urls, "should return empty when only non-XML sitemaps exist")
+}
+
 func TestSitemapService_DiscoverURLs_FindsSitemapAtDomainRoot(t *testing.T) {
 	t.Parallel()
 
