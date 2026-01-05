@@ -16,6 +16,48 @@ import (
 // waiting 30s to discover a transient issue.
 const DefaultFetchTimeout = 10 * time.Second
 
+// shadowDOMSerializer is JavaScript that serializes the DOM including shadow roots.
+// Standard page.HTML() only returns light DOM, missing content inside shadow roots
+// (e.g., navigation links in Web Components). This recursively inlines shadow content.
+const shadowDOMSerializer = `() => {
+	function serializeNode(node) {
+		if (node.nodeType === Node.TEXT_NODE) {
+			return node.textContent;
+		}
+		if (node.nodeType !== Node.ELEMENT_NODE) {
+			return '';
+		}
+
+		const el = node;
+		const tag = el.tagName.toLowerCase();
+
+		let result = '<' + tag;
+		for (const attr of el.attributes) {
+			result += ' ' + attr.name + '="' + attr.value.replace(/"/g, '&quot;') + '"';
+		}
+		result += '>';
+
+		// Inline shadow DOM content before light DOM children
+		if (el.shadowRoot) {
+			for (const child of el.shadowRoot.childNodes) {
+				result += serializeNode(child);
+			}
+		}
+
+		for (const child of el.childNodes) {
+			result += serializeNode(child);
+		}
+
+		const voidElements = ['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr'];
+		if (!voidElements.includes(tag)) {
+			result += '</' + tag + '>';
+		}
+
+		return result;
+	}
+	return '<!DOCTYPE html>' + serializeNode(document.documentElement);
+}`
+
 // Ensure Fetcher implements locdoc.Fetcher at compile time.
 var _ locdoc.Fetcher = (*Fetcher)(nil)
 
@@ -125,12 +167,16 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 		return "", err
 	}
 
-	// Get rendered HTML
-	html, err := page.HTML()
+	// Get rendered HTML including shadow DOM content.
+	// page.HTML() only returns the light DOM, missing content inside shadow roots
+	// (used by Web Components like Salesforce's dx-tree-item). This custom serializer
+	// recursively inlines shadow DOM content so link extraction can find all hrefs.
+	result, err := page.Eval(shadowDOMSerializer)
 	if err != nil {
 		f.closePageAndContext(page, incognito)
 		return "", err
 	}
+	html := result.Value.Str()
 
 	// Clean close of entire incognito context (error intentionally ignored)
 	_ = incognito.Close()

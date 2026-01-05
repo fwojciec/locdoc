@@ -6,6 +6,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -123,4 +124,47 @@ func TestFetcher_Fetch_AfterClose_ReturnsError(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, locdoc.EINVALID, locdoc.ErrorCode(err))
 	assert.Contains(t, locdoc.ErrorMessage(err), "closed")
+}
+
+func TestFetcher_Fetch_SerializesShadowDOMContent(t *testing.T) {
+	t.Parallel()
+
+	// Serve a page with Web Components that have shadow DOM containing links.
+	// The content uses data-shadow-content attribute to mark what we expect
+	// to be serialized from the shadow DOM (not from script).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<!DOCTYPE html>
+<html>
+<head><title>Shadow DOM Test</title></head>
+<body>
+<nav-menu></nav-menu>
+<script>
+class NavMenu extends HTMLElement {
+  constructor() {
+    super();
+    const shadow = this.attachShadow({mode: 'open'});
+    shadow.innerHTML = '<a href="/shadow-link-1" data-shadow-content="true">Shadow Link 1</a><a href="/shadow-link-2" data-shadow-content="true">Shadow Link 2</a>';
+  }
+}
+customElements.define('nav-menu', NavMenu);
+</script>
+</body>
+</html>`))
+	}))
+	defer srv.Close()
+
+	fetcher, err := rod.NewFetcher()
+	require.NoError(t, err)
+	defer fetcher.Close()
+
+	html, err := fetcher.Fetch(context.Background(), srv.URL)
+
+	require.NoError(t, err)
+	// Count occurrences of the shadow content marker. In the raw script, it appears
+	// in string literals (2 times in the innerHTML assignment). If shadow DOM is
+	// properly serialized, it should appear additional times as actual DOM elements,
+	// giving us 4 total (2 in script + 2 in serialized shadow DOM).
+	markerCount := strings.Count(html, `data-shadow-content="true"`)
+	assert.Greater(t, markerCount, 2, "shadow DOM content not serialized: marker found %d times (expected >2)", markerCount)
 }
