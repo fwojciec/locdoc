@@ -20,9 +20,12 @@ const DefaultFetchTimeout = 10 * time.Second
 // Standard page.HTML() only returns light DOM, missing content inside shadow roots
 // (e.g., navigation links in Web Components). This recursively inlines shadow content.
 const shadowDOMSerializer = `() => {
+	function escapeHTML(s) {
+		return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	}
 	function serializeNode(node) {
 		if (node.nodeType === Node.TEXT_NODE) {
-			return node.textContent;
+			return escapeHTML(node.textContent);
 		}
 		if (node.nodeType !== Node.ELEMENT_NODE) {
 			return '';
@@ -33,7 +36,8 @@ const shadowDOMSerializer = `() => {
 
 		let result = '<' + tag;
 		for (const attr of el.attributes) {
-			result += ' ' + attr.name + '="' + attr.value.replace(/"/g, '&quot;') + '"';
+			const escaped = attr.value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+			result += ' ' + attr.name + '="' + escaped + '"';
 		}
 		result += '>';
 
