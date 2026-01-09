@@ -40,9 +40,11 @@ Thumbs.db
 
 # Build artifacts
 /locdoc
+/docfetch
 /dist/
 /build/
 cmd/locdoc/locdoc
+cmd/docfetch/docfetch
 
 # Test coverage
 coverage.txt
