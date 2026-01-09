@@ -19,7 +19,7 @@ type Crawler struct {
 	*Discoverer
 	Sitemaps     locdoc.SitemapService
 	Converter    locdoc.Converter
-	Documents    locdoc.DocumentService
+	Documents    locdoc.DocumentWriter
 	TokenCounter locdoc.TokenCounter
 }
 
