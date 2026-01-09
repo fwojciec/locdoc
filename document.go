@@ -36,8 +36,7 @@ type DocumentWriter interface {
 
 // DocumentService represents a service for managing documents.
 type DocumentService interface {
-	// CreateDocument creates a new document.
-	CreateDocument(ctx context.Context, doc *Document) error
+	DocumentWriter
 
 	// FindDocumentByID retrieves a document by ID.
 	// Returns ENOTFOUND if document does not exist.
