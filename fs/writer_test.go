@@ -218,4 +218,23 @@ Manage users.`
 		require.Error(t, err)
 		assert.Equal(t, locdoc.EINVALID, locdoc.ErrorCode(err))
 	})
+
+	t.Run("rejects path traversal", func(t *testing.T) {
+		t.Parallel()
+
+		baseDir := t.TempDir()
+		w := fs.NewWriter(baseDir)
+
+		doc := &locdoc.Document{
+			ProjectID: "test-project",
+			SourceURL: "https://example.com/../../../etc/passwd",
+			Title:     "Malicious",
+			Content:   "Content",
+		}
+
+		err := w.CreateDocument(context.Background(), doc)
+
+		require.Error(t, err)
+		assert.Equal(t, locdoc.EINVALID, locdoc.ErrorCode(err))
+	})
 }
