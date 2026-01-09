@@ -29,6 +29,11 @@ func (d *Document) Validate() error {
 	return nil
 }
 
+// DocumentWriter writes documents to storage.
+type DocumentWriter interface {
+	CreateDocument(ctx context.Context, doc *Document) error
+}
+
 // DocumentService represents a service for managing documents.
 type DocumentService interface {
 	// CreateDocument creates a new document.
