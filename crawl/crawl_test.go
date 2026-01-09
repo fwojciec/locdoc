@@ -907,3 +907,36 @@ func TestCrawler_CrawlProject(t *testing.T) {
 		assert.Equal(t, 2, rodFetchCalls, "should fall back to Rod for all pages")
 	})
 }
+
+func TestCrawler_AcceptsDocumentWriter(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Documents field accepts DocumentWriter interface", func(t *testing.T) {
+		t.Parallel()
+
+		// Create a DocumentWriter (narrow interface), not DocumentService
+		writer := &mock.DocumentWriter{
+			CreateDocumentFn: func(_ context.Context, _ *locdoc.Document) error {
+				return nil
+			},
+		}
+
+		// Crawler should accept DocumentWriter for its Documents field
+		c := &crawl.Crawler{
+			Discoverer: &crawl.Discoverer{
+				HTTPFetcher: &mock.Fetcher{},
+				RodFetcher:  &mock.Fetcher{},
+				Extractor:   &mock.Extractor{},
+				Concurrency: 1,
+				RetryDelays: []time.Duration{0},
+			},
+			Sitemaps:     &mock.SitemapService{},
+			Converter:    &mock.Converter{},
+			Documents:    writer, // Should compile with DocumentWriter
+			TokenCounter: &mock.TokenCounter{},
+		}
+
+		// Verify Crawler is valid
+		assert.NotNil(t, c.Documents)
+	})
+}
