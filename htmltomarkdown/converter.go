@@ -3,6 +3,7 @@
 package htmltomarkdown
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/JohannesKaufmann/html-to-markdown/v2/converter"
@@ -43,5 +44,23 @@ func (c *Converter) Convert(html string) (string, error) {
 		return "", err
 	}
 
-	return result, nil
+	return c.postProcess(result), nil
+}
+
+// postProcess applies cleanup transformations to the converted markdown.
+func (c *Converter) postProcess(md string) string {
+	return trimCodeBlockWhitespace(md)
+}
+
+// trimCodeBlockWhitespace removes leading and trailing blank lines from
+// fenced code blocks. These blank lines are artifacts from HTML structure
+// (whitespace between tags and content) and have no value in documentation.
+func trimCodeBlockWhitespace(md string) string {
+	// Remove blank lines immediately after opening fence: ```lang\n\n → ```lang\n
+	leadingRe := regexp.MustCompile("(```\\w*)\n(\n)+")
+	md = leadingRe.ReplaceAllString(md, "$1\n")
+
+	// Remove blank lines immediately before closing fence: \n\n``` → \n```
+	trailingRe := regexp.MustCompile("\n(\n)+```")
+	return trailingRe.ReplaceAllString(md, "\n```")
 }

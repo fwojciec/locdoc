@@ -181,6 +181,57 @@ func main() {
 		assert.Equal(t, locdoc.EINVALID, locdoc.ErrorCode(err))
 	})
 
+	t.Run("trims leading blank lines from code blocks", func(t *testing.T) {
+		t.Parallel()
+
+		// HTML with newline after <code> tag - common in real documentation
+		html := `<pre><code>
+nx g @nx/react:application apps/my-app
+</code></pre>`
+
+		conv := htmltomarkdown.NewConverter()
+		md, err := conv.Convert(html)
+
+		require.NoError(t, err)
+		// Should not have blank line after opening fence
+		assert.Contains(t, md, "```\nnx g")
+		assert.NotContains(t, md, "```\n\nnx g")
+	})
+
+	t.Run("trims trailing blank lines from code blocks", func(t *testing.T) {
+		t.Parallel()
+
+		// HTML with newline before </code> tag
+		html := `<pre><code>some code
+
+</code></pre>`
+
+		conv := htmltomarkdown.NewConverter()
+		md, err := conv.Convert(html)
+
+		require.NoError(t, err)
+		// Should not have blank line before closing fence
+		assert.Contains(t, md, "some code\n```")
+		assert.NotContains(t, md, "some code\n\n```")
+	})
+
+	t.Run("trims both leading and trailing blank lines from code blocks", func(t *testing.T) {
+		t.Parallel()
+
+		html := `<pre><code class="language-bash">
+
+npm install my-package
+
+</code></pre>`
+
+		conv := htmltomarkdown.NewConverter()
+		md, err := conv.Convert(html)
+
+		require.NoError(t, err)
+		assert.Contains(t, md, "```bash\nnpm install")
+		assert.Contains(t, md, "my-package\n```")
+	})
+
 	t.Run("handles complex documentation page", func(t *testing.T) {
 		t.Parallel()
 
