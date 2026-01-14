@@ -15,10 +15,10 @@ import (
 	"github.com/fwojciec/locdoc/goquery"
 	"github.com/fwojciec/locdoc/htmltomarkdown"
 	lochttp "github.com/fwojciec/locdoc/http"
+	"github.com/fwojciec/locdoc/readability"
 	"github.com/fwojciec/locdoc/rod"
 	locslog "github.com/fwojciec/locdoc/slog"
 	"github.com/fwojciec/locdoc/sqlite"
-	"github.com/fwojciec/locdoc/trafilatura"
 	"google.golang.org/genai"
 )
 
@@ -135,7 +135,7 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 
 		// Create rate limiter for recursive crawling (1 request per second per domain)
 		rateLimiter := crawl.NewDomainLimiter(1.0)
-		extractor := trafilatura.NewExtractor()
+		extractor := readability.NewExtractor()
 
 		// Use interfaces to allow wrapping with logging decorators
 		var activeLinkSelectors locdoc.LinkSelectorRegistry = linkSelectors
