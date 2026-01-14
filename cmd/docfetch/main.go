@@ -13,8 +13,8 @@ import (
 	"github.com/fwojciec/locdoc/goquery"
 	"github.com/fwojciec/locdoc/htmltomarkdown"
 	lochttp "github.com/fwojciec/locdoc/http"
+	"github.com/fwojciec/locdoc/readability"
 	"github.com/fwojciec/locdoc/rod"
-	"github.com/fwojciec/locdoc/trafilatura"
 )
 
 func main() {
@@ -104,7 +104,7 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 
 	// Create rate limiter for recursive crawling (1 request per second per domain)
 	rateLimiter := crawl.NewDomainLimiter(1.0)
-	extractor := trafilatura.NewExtractor()
+	extractor := readability.NewExtractor()
 
 	concurrency := cli.Concurrency
 	if concurrency <= 0 {
