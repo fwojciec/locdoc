@@ -26,45 +26,51 @@ The current design exposes too many internals. Instead, we think in terms of **w
 URL → [Discover URLs] → [Fetch Each] → [Save Files]
 ```
 
-Three stages, three interfaces:
+Three stages, three interfaces.
+
+**Location**: All domain types and interfaces go in the root `locdoc` package (`page.go`), following Ben Johnson's Standard Package Layout. Mocks go in `mock/page.go`.
 
 ```go
-// Page represents a fetched documentation page
+// page.go - in root locdoc package
+
+// Page represents a fetched documentation page.
 type Page struct {
     URL     string
     Title   string
     Content string // Markdown
 }
 
-// URLSource discovers documentation URLs from a site.
-// Hides: sitemap vs recursive discovery, HTTP vs browser probing
-type URLSource interface {
-    Discover(ctx context.Context, sourceURL string) ([]string, error)
-}
-
-// ProgressEvent reports fetch progress
-type ProgressEvent struct {
+// FetchProgress reports progress during page fetching.
+type FetchProgress struct {
     URL       string
     Completed int
     Total     int
     Error     error
 }
 
-// ProgressFunc is called as pages are processed
-type ProgressFunc func(ProgressEvent)
+// FetchProgressFunc is called as pages are processed.
+type FetchProgressFunc func(FetchProgress)
+
+// URLSource discovers documentation URLs from a site.
+// Implementations hide the complexity of sitemap vs recursive discovery.
+type URLSource interface {
+    Discover(ctx context.Context, sourceURL string) ([]string, error)
+}
 
 // PageFetcher retrieves and converts documentation pages.
-// Hides: HTTP vs browser, retry logic, extraction, markdown conversion
+// Implementations hide HTTP vs browser selection, retry logic,
+// content extraction, and markdown conversion.
 type PageFetcher interface {
-    FetchAll(ctx context.Context, urls []string, progress ProgressFunc) ([]*Page, error)
+    FetchAll(ctx context.Context, urls []string, progress FetchProgressFunc) ([]*Page, error)
 }
 
 // PageStore persists pages to storage with atomic semantics.
-// Hides: filesystem details, temp directory management
+// Save writes to a temporary location; Commit makes changes permanent;
+// Abort discards pending changes.
 type PageStore interface {
     Save(ctx context.Context, page *Page) error
-    Commit() error  // Finalize (rename temp → final)
-    Abort() error   // Cancel (cleanup temp)
+    Commit() error
+    Abort() error
 }
 ```
 
@@ -221,31 +227,28 @@ func TestRealFetch_DocusaurusSite(t *testing.T) {
 
 ### Phase 1: Define Core Types and Interfaces
 
-**Task 1.1: Create docfetch domain types**
-- Add `Page` struct (URL, Title, Content)
-- Add `ProgressEvent` struct
-- Add `ProgressFunc` type
-- Location: `cmd/docfetch/types.go`
+**Task 1.1: Define domain types and interfaces** ✅
+- Add `Page` struct, `FetchProgress` struct, `FetchProgressFunc` type
+- Add `URLSource`, `PageFetcher`, `PageStore` interfaces
+- Location: `page.go` (root locdoc package)
+- Mocks: `mock/page.go`
 
-**Task 1.2: Create URLSource interface and implementation**
-- Define `URLSource` interface
+**Task 1.2: Create CompositeSource implementation**
 - Create `CompositeSource` that tries sitemap then falls back to recursive
-- Wire up existing `SitemapService` + `Discoverer` behind this interface
-- Location: `cmd/docfetch/source.go`
+- Wire up existing `SitemapService` + `crawl.Discoverer` behind URLSource interface
+- Location: `cmd/docfetch/` (wiring layer, implements `locdoc.URLSource`)
 - Test: `cmd/docfetch/source_test.go`
 
-**Task 1.3: Create PageFetcher interface and implementation**
-- Define `PageFetcher` interface
+**Task 1.3: Create ConcurrentFetcher implementation**
 - Create `ConcurrentFetcher` that wraps existing crawl logic
-- Hide: HTTP vs Rod selection, retry, extraction, conversion
-- Location: `cmd/docfetch/fetcher.go`
+- Hide: retry, extraction, conversion (probing happens in main.go)
+- Location: `cmd/docfetch/` (wiring layer, implements `locdoc.PageFetcher`)
 - Test: `cmd/docfetch/fetcher_test.go`
 
-**Task 1.4: Create PageStore interface and implementation**
-- Define `PageStore` interface with atomic semantics (Save/Commit/Abort)
+**Task 1.4: Create FileStore implementation**
 - Create `FileStore` that wraps `fs.Writer` + temp directory logic
-- Location: `cmd/docfetch/store.go`
-- Test: `cmd/docfetch/store_test.go`
+- Location: `fs/pagestore.go` (depends on fs package, implements `locdoc.PageStore`)
+- Test: `fs/pagestore_test.go`
 
 ### Phase 2: Refactor FetchCmd
 
@@ -730,26 +733,37 @@ func TestFileStore_PreservesURLPathStructure(t *testing.T) {
 
 ## Target File Structure
 
-After refactoring:
+After refactoring (following Ben Johnson's Standard Package Layout):
 
 ```
-cmd/docfetch/
-├── main.go              # Entry point, wiring
-├── main_test.go         # CLI integration tests
-├── types.go             # Page, ProgressEvent, ProgressFunc
-├── source.go            # URLSource interface + CompositeSource
-├── source_test.go       # Story: URL discovery strategies
-├── fetcher.go           # PageFetcher interface + ConcurrentFetcher
-├── fetcher_test.go      # Story: Page processing pipeline
-├── store.go             # PageStore interface + FileStore
-├── store_test.go        # Story: Atomic file storage
-├── fetch.go             # FetchCmd orchestration
-├── fetch_test.go        # Story: Fetch orchestration (3 mocks)
-├── preview_test.go      # Story: Preview behavior
-└── cli_test.go          # Story: CLI validation
+locdoc/
+├── page.go              # Domain types: Page, FetchProgress, FetchProgressFunc
+│                        # Interfaces: URLSource, PageFetcher, PageStore
+├── mock/
+│   └── page.go          # Mocks for URLSource, PageFetcher, PageStore
+├── fs/
+│   ├── pagestore.go     # FileStore implementation (locdoc.PageStore)
+│   └── pagestore_test.go
+└── cmd/docfetch/
+    ├── main.go          # Entry point, wiring, probing logic
+    ├── cli.go           # CLI parsing (FetchCmd struct)
+    ├── fetch.go         # FetchCmd.Run orchestration
+    ├── source.go        # CompositeSource (locdoc.URLSource)
+    ├── fetcher.go       # ConcurrentFetcher (locdoc.PageFetcher)
+    ├── source_test.go   # Story: URL discovery strategies
+    ├── fetcher_test.go  # Story: Page processing pipeline
+    ├── fetch_test.go    # Story: Fetch orchestration (3 mocks)
+    ├── preview_test.go  # Story: Preview behavior
+    └── cli_test.go      # Story: CLI validation
 ```
 
-Dependencies from locdoc/ that are still used (internals of implementations):
+**Architecture notes:**
+- Domain types and interfaces in root (`page.go`) - can be imported anywhere
+- FileStore in `fs/` - depends on filesystem operations
+- CompositeSource/ConcurrentFetcher in `cmd/docfetch/` - docfetch-specific wiring
+- Tests use `mock.URLSource`, `mock.PageFetcher`, `mock.PageStore`
+
+Dependencies used by implementations:
 - `locdoc.SitemapService` → inside CompositeSource
 - `crawl.Discoverer` → inside CompositeSource
 - `locdoc.Fetcher` → inside ConcurrentFetcher
