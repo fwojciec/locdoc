@@ -7,6 +7,7 @@
 set -e
 
 EPIC="${1:-locdoc-80r}"
+CLAUDE="${CLAUDE:-$HOME/.claude/local/claude}"
 
 echo "🔄 Starting Ralph loop for epic: $EPIC"
 
@@ -15,7 +16,7 @@ while :; do
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "🔍 Looking for next ready task..."
 
-    claude -p "/ralph-iterate $EPIC" --dangerously-skip-permissions
+    "$CLAUDE" -p "/ralph-iterate $EPIC" --dangerously-skip-permissions
 
     # Check if epic is complete
     if [ -f .ralph-complete ]; then
