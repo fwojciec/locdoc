@@ -10,9 +10,16 @@ import (
 
 // Dependencies holds all services and configuration for command execution.
 type Dependencies struct {
-	Ctx        context.Context
-	Stdout     io.Writer
-	Stderr     io.Writer
+	Ctx    context.Context
+	Stdout io.Writer
+	Stderr io.Writer
+
+	// New 3-interface architecture
+	Source  locdoc.URLSource
+	Fetcher locdoc.PageFetcher
+	Store   locdoc.PageStore
+
+	// Legacy fields for backward compatibility during transition
 	Sitemaps   locdoc.SitemapService
 	Discoverer *crawl.Discoverer
 	Crawler    *crawl.Crawler
