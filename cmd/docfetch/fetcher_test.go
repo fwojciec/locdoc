@@ -11,12 +11,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Story: Page Processing Pipeline
+// The fetcher processes URLs through fetch → extract → convert stages
+
 func TestConcurrentFetcher_FetchAll(t *testing.T) {
 	t.Parallel()
 
 	t.Run("fetches single page through pipeline", func(t *testing.T) {
 		t.Parallel()
 
+		// Given a pipeline with fetch, extract, and convert stages
 		fetcher := &mock.Fetcher{
 			FetchFn: func(_ context.Context, _ string) (string, error) {
 				return "<html><body>Test</body></html>", nil
@@ -38,8 +42,10 @@ func TestConcurrentFetcher_FetchAll(t *testing.T) {
 
 		cf := main.NewConcurrentFetcher(fetcher, extractor, converter)
 
+		// When I fetch a single URL
 		pages, err := cf.FetchAll(context.Background(), []string{"https://example.com/page"}, nil)
 
+		// Then the page is processed through all stages
 		require.NoError(t, err)
 		require.Len(t, pages, 1)
 		assert.Equal(t, "https://example.com/page", pages[0].URL)
@@ -50,6 +56,7 @@ func TestConcurrentFetcher_FetchAll(t *testing.T) {
 	t.Run("fetches multiple pages", func(t *testing.T) {
 		t.Parallel()
 
+		// Given a pipeline that tracks fetched URLs
 		fetchedURLs := make(chan string, 3)
 
 		fetcher := &mock.Fetcher{
@@ -80,12 +87,14 @@ func TestConcurrentFetcher_FetchAll(t *testing.T) {
 			"https://example.com/page3",
 		}
 
+		// When I fetch multiple URLs
 		pages, err := cf.FetchAll(context.Background(), urls, nil)
 
+		// Then all pages are processed
 		require.NoError(t, err)
 		require.Len(t, pages, 3)
 
-		// All URLs should have been fetched
+		// And all URLs were fetched
 		close(fetchedURLs)
 		fetched := make(map[string]bool)
 		for url := range fetchedURLs {
@@ -99,6 +108,7 @@ func TestConcurrentFetcher_FetchAll(t *testing.T) {
 	t.Run("reports progress for each page", func(t *testing.T) {
 		t.Parallel()
 
+		// Given a working pipeline
 		fetcher := &mock.Fetcher{
 			FetchFn: func(_ context.Context, _ string) (string, error) {
 				return "<html></html>", nil
@@ -127,12 +137,14 @@ func TestConcurrentFetcher_FetchAll(t *testing.T) {
 			progressReports = append(progressReports, p)
 		}
 
+		// When I fetch with a progress callback
 		_, err := cf.FetchAll(context.Background(), urls, progress)
 
+		// Then progress is reported for each page
 		require.NoError(t, err)
 		require.Len(t, progressReports, 2, "should report progress for each page")
 
-		// Verify progress reports have correct values
+		// And progress reports have correct values
 		for i, p := range progressReports {
 			assert.Equal(t, urls[i], p.URL, "URL should match")
 			assert.Equal(t, 2, p.Total, "total should be 2")
@@ -144,6 +156,7 @@ func TestConcurrentFetcher_FetchAll(t *testing.T) {
 	t.Run("continues on individual page failures", func(t *testing.T) {
 		t.Parallel()
 
+		// Given a fetcher that fails for one URL
 		fetchErr := locdoc.Errorf(locdoc.EINTERNAL, "fetch failed")
 
 		fetcher := &mock.Fetcher{
@@ -178,17 +191,18 @@ func TestConcurrentFetcher_FetchAll(t *testing.T) {
 			progressReports = append(progressReports, p)
 		}
 
+		// When I fetch URLs including the failing one
 		pages, err := cf.FetchAll(context.Background(), urls, progress)
 
-		// Should not return an error, even though one page failed
+		// Then no overall error occurs
 		require.NoError(t, err)
 
-		// Should have 2 successful pages
+		// And only successful pages are returned
 		require.Len(t, pages, 2)
 		assert.Equal(t, "https://example.com/ok1", pages[0].URL)
 		assert.Equal(t, "https://example.com/ok2", pages[1].URL)
 
-		// Progress should report all 3 pages with error for the failed one
+		// And progress reports the failure for that page
 		require.Len(t, progressReports, 3)
 		require.NoError(t, progressReports[0].Error)
 		assert.Equal(t, fetchErr, progressReports[1].Error)
@@ -198,6 +212,7 @@ func TestConcurrentFetcher_FetchAll(t *testing.T) {
 	t.Run("returns error on context cancellation", func(t *testing.T) {
 		t.Parallel()
 
+		// Given a pipeline with a cancelled context
 		fetcher := &mock.Fetcher{
 			FetchFn: func(ctx context.Context, _ string) (string, error) {
 				return "", ctx.Err()
@@ -219,8 +234,10 @@ func TestConcurrentFetcher_FetchAll(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel immediately
 
+		// When I fetch with a cancelled context
 		_, err := cf.FetchAll(ctx, []string{"https://example.com/page"}, nil)
 
+		// Then a cancellation error is returned
 		require.Error(t, err)
 		assert.ErrorIs(t, err, context.Canceled)
 	})
