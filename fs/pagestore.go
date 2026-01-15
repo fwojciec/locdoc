@@ -46,6 +46,19 @@ func (s *FileStore) Save(ctx context.Context, page *locdoc.Page) error {
 
 	fullPath := filepath.Join(s.tempDir(), relPath)
 
+	// Prevent path traversal attacks - ensure the resolved path is within tempDir
+	absBase, err := filepath.Abs(s.tempDir())
+	if err != nil {
+		return err
+	}
+	absPath, err := filepath.Abs(fullPath)
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(absPath, absBase+string(filepath.Separator)) && absPath != absBase {
+		return locdoc.Errorf(locdoc.EINVALID, "path traversal detected in URL")
+	}
+
 	// Create parent directories
 	dir := filepath.Dir(fullPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {

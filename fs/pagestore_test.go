@@ -150,3 +150,22 @@ func TestFileStore_PreservesURLPathStructure(t *testing.T) {
 	_, err = os.Stat(expectedPath)
 	require.NoError(t, err, "nested path structure should be preserved")
 }
+
+func TestFileStore_RejectsPathTraversal(t *testing.T) {
+	t.Parallel()
+
+	// Given a store
+	base := t.TempDir()
+	store := fs.NewFileStore(base, "output")
+
+	// When I try to save a page with path traversal
+	err := store.Save(context.Background(), &locdoc.Page{
+		URL:     "https://example.com/../../../etc/passwd",
+		Title:   "Malicious",
+		Content: "bad content",
+	})
+
+	// Then an error is returned
+	require.Error(t, err, "path traversal should be rejected")
+	assert.Contains(t, err.Error(), "path traversal")
+}
