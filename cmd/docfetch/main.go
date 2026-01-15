@@ -10,6 +10,7 @@ import (
 	"github.com/alecthomas/kong"
 	"github.com/fwojciec/locdoc"
 	"github.com/fwojciec/locdoc/crawl"
+	"github.com/fwojciec/locdoc/fs"
 	"github.com/fwojciec/locdoc/goquery"
 	"github.com/fwojciec/locdoc/htmltomarkdown"
 	lochttp "github.com/fwojciec/locdoc/http"
@@ -78,9 +79,6 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		Stderr: stderr,
 	}
 
-	// Create sitemap service
-	deps.Sitemaps = lochttp.NewSitemapService(nil)
-
 	// Create fetchers
 	timeout := cli.Timeout
 	if timeout == 0 {
@@ -96,23 +94,34 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 
 	httpFetcher := lochttp.NewFetcher(lochttp.WithTimeout(timeout))
 
-	// Create link selector registry for recursive crawling fallback
+	// Create detector/prober for framework detection
 	detector := goquery.NewDetector()
-	fallbackSelector := goquery.NewGenericSelector()
-	linkSelectors := goquery.NewRegistry(detector, fallbackSelector)
-	registerFrameworkSelectors(linkSelectors)
 
-	// Create rate limiter for recursive crawling (1 request per second per domain)
-	rateLimiter := crawl.NewDomainLimiter(1.0)
+	// Create extractor and converter
 	extractor := readability.NewExtractor()
+	converter := htmltomarkdown.NewConverter()
 
 	concurrency := cli.Concurrency
 	if concurrency <= 0 {
 		concurrency = 3
 	}
 
-	// Create Discoverer for URL discovery (preview mode and recursive crawl fallback)
-	deps.Discoverer = &crawl.Discoverer{
+	// Probe to select the appropriate fetcher based on framework requirements
+	fetcher, err := ProbeFetcher(ctx, cli.URL, httpFetcher, rodFetcher, detector)
+	if err != nil {
+		return fmt.Errorf("failed to probe site: %w", err)
+	}
+
+	// Create link selector registry for recursive crawling fallback
+	fallbackSelector := goquery.NewGenericSelector()
+	linkSelectors := goquery.NewRegistry(detector, fallbackSelector)
+	registerFrameworkSelectors(linkSelectors)
+
+	// Create rate limiter for recursive crawling (1 request per second per domain)
+	rateLimiter := crawl.NewDomainLimiter(1.0)
+
+	// Create Discoverer for recursive URL discovery fallback
+	discoverer := &crawl.Discoverer{
 		HTTPFetcher:   httpFetcher,
 		RodFetcher:    rodFetcher,
 		Prober:        detector,
@@ -122,15 +131,13 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 		Concurrency:   concurrency,
 	}
 
-	// Create Crawler for full crawl mode
-	if !cli.Preview {
-		deps.Crawler = &crawl.Crawler{
-			Discoverer: deps.Discoverer,
-			Sitemaps:   deps.Sitemaps,
-			Converter:  htmltomarkdown.NewConverter(),
-			// Documents will be set by FetchCmd.runFetch
-		}
-	}
+	// Create sitemap service
+	sitemapService := lochttp.NewSitemapService(nil)
+
+	// Wire the 3-interface architecture
+	deps.Source = NewCompositeSource(sitemapService, &DiscovererAdapter{Discoverer: discoverer})
+	deps.Fetcher = NewConcurrentFetcher(fetcher, extractor, converter)
+	deps.Store = fs.NewFileStore(cli.Path, cli.Name)
 
 	// Create and run the fetch command
 	cmd := &FetchCmd{
