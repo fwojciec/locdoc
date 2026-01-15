@@ -42,9 +42,14 @@ Fix issues and retry until both pass.
 
 ### 5. Self-Review
 
-Use `superpowers:requesting-code-review` to get review from a subagent.
+Stage changes first so the reviewer can see the diff:
+```bash
+git add -A
+```
 
-Then use `superpowers:receiving-code-review` to evaluate feedback critically. Not all suggestions require action - apply technical judgment.
+Then use `superpowers:requesting-code-review` to get review from a subagent.
+
+Use `superpowers:receiving-code-review` to evaluate feedback critically. Not all suggestions require action - apply technical judgment.
 
 ### 6. Reflect
 
