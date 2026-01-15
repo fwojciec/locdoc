@@ -19,11 +19,14 @@ type RecursiveDiscoverer interface {
 }
 
 // DiscovererAdapter adapts crawl.Discoverer to the RecursiveDiscoverer interface.
+// It intentionally omits the variadic DiscoverOption parameters - configuration
+// decisions (like concurrency, retry delays) are made in main.go wiring, not here.
+// Used by main.go when wiring CompositeSource with a real discoverer.
 type DiscovererAdapter struct {
 	Discoverer *crawl.Discoverer
 }
 
-// DiscoverURLs calls the underlying Discoverer without options.
+// DiscoverURLs calls the underlying Discoverer with default options.
 func (a *DiscovererAdapter) DiscoverURLs(ctx context.Context, sourceURL string, filter *locdoc.URLFilter) ([]string, error) {
 	return a.Discoverer.DiscoverURLs(ctx, sourceURL, filter)
 }
