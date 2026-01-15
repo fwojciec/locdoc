@@ -47,7 +47,7 @@ func TestConcurrentFetcher_FetchAll(t *testing.T) {
 		assert.Equal(t, "# Converted markdown", pages[0].Content)
 	})
 
-	t.Run("fetches multiple pages concurrently", func(t *testing.T) {
+	t.Run("fetches multiple pages", func(t *testing.T) {
 		t.Parallel()
 
 		fetchedURLs := make(chan string, 3)
@@ -132,8 +132,9 @@ func TestConcurrentFetcher_FetchAll(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, progressReports, 2, "should report progress for each page")
 
-		// Verify progress reports have correct totals
+		// Verify progress reports have correct values
 		for i, p := range progressReports {
+			assert.Equal(t, urls[i], p.URL, "URL should match")
 			assert.Equal(t, 2, p.Total, "total should be 2")
 			assert.Equal(t, i+1, p.Completed, "completed should increment")
 			assert.NoError(t, p.Error, "no error expected")

@@ -6,6 +6,9 @@ import (
 	"github.com/fwojciec/locdoc"
 )
 
+// Ensure ConcurrentFetcher implements locdoc.PageFetcher at compile time.
+var _ locdoc.PageFetcher = (*ConcurrentFetcher)(nil)
+
 // ConcurrentFetcher implements locdoc.PageFetcher by orchestrating
 // fetching, extraction, and conversion through injected dependencies.
 type ConcurrentFetcher struct {
