@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 
 	"github.com/fwojciec/locdoc"
 )
@@ -83,10 +84,27 @@ func (c *FetchCmd) runFetch(deps *Dependencies) error {
 	return nil
 }
 
-// truncateURL shortens a URL for display.
-func truncateURL(url string, maxLen int) string {
-	if len(url) <= maxLen {
-		return url
+// truncateURL shortens a URL for display by showing only the path.
+// This makes progress more useful when many URLs share the same host prefix.
+func truncateURL(rawURL string, maxLen int) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		// Fallback to simple right-truncation
+		if len(rawURL) <= maxLen {
+			return rawURL
+		}
+		return rawURL[:maxLen-3] + "..."
 	}
-	return url[:maxLen-3] + "..."
+
+	path := parsed.Path
+	if path == "" {
+		path = "/"
+	}
+
+	if len(path) <= maxLen {
+		return path
+	}
+
+	// Truncate from the left to show the unique suffix
+	return "..." + path[len(path)-maxLen+3:]
 }
