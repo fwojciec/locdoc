@@ -2,17 +2,24 @@ package main
 
 import (
 	"context"
+	"time"
 
 	"github.com/fwojciec/locdoc"
 	"github.com/fwojciec/locdoc/crawl"
 )
+
+// RenderDelayConfigurer can configure a render delay.
+// The Rod fetcher implements this interface.
+type RenderDelayConfigurer interface {
+	SetRenderDelay(d time.Duration)
+}
 
 // ProbeFetcher probes a source URL to determine which fetcher to use.
 // It fetches HTML using the HTTP fetcher, detects the framework,
 // and returns the appropriate fetcher based on JS requirements.
 //
 // Decision flow:
-//   - Known JS-required framework (GitBook) → Use Rod
+//   - Known JS-required framework (GitBook, zeroheight) → Use Rod with framework-specific delay
 //   - Known HTTP-only framework (Sphinx, MkDocs, etc.) → Use HTTP
 //   - Unknown framework → Fetch with both, compare content
 //   - HTTP fetch fails → Fall back to Rod
@@ -35,6 +42,13 @@ func ProbeFetcher(
 
 	// Detect the framework
 	framework := prober.Detect(httpHTML)
+
+	// Configure render delay for detected framework
+	if delay := prober.RenderDelay(framework); delay > 0 {
+		if configurer, ok := rodFetcher.(RenderDelayConfigurer); ok {
+			configurer.SetRenderDelay(delay)
+		}
+	}
 
 	// Check if the framework requires JavaScript
 	requiresJS, known := prober.RequiresJS(framework)

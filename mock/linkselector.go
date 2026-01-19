@@ -1,6 +1,10 @@
 package mock
 
-import "github.com/fwojciec/locdoc"
+import (
+	"time"
+
+	"github.com/fwojciec/locdoc"
+)
 
 var _ locdoc.LinkSelector = (*LinkSelector)(nil)
 
@@ -33,8 +37,9 @@ var _ locdoc.Prober = (*Prober)(nil)
 
 // Prober is a mock implementation of locdoc.Prober.
 type Prober struct {
-	DetectFn     func(html string) locdoc.Framework
-	RequiresJSFn func(framework locdoc.Framework) (requires bool, known bool)
+	DetectFn      func(html string) locdoc.Framework
+	RequiresJSFn  func(framework locdoc.Framework) (requires bool, known bool)
+	RenderDelayFn func(framework locdoc.Framework) time.Duration
 }
 
 func (p *Prober) Detect(html string) locdoc.Framework {
@@ -43,6 +48,13 @@ func (p *Prober) Detect(html string) locdoc.Framework {
 
 func (p *Prober) RequiresJS(framework locdoc.Framework) (requires bool, known bool) {
 	return p.RequiresJSFn(framework)
+}
+
+func (p *Prober) RenderDelay(framework locdoc.Framework) time.Duration {
+	if p.RenderDelayFn != nil {
+		return p.RenderDelayFn(framework)
+	}
+	return 0
 }
 
 var _ locdoc.LinkSelectorRegistry = (*LinkSelectorRegistry)(nil)

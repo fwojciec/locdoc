@@ -1,5 +1,7 @@
 package locdoc
 
+import "time"
+
 // LinkPriority represents crawl priority (higher = more important).
 type LinkPriority int
 
@@ -34,6 +36,7 @@ const (
 	FrameworkVitePress  Framework = "vitepress"
 	FrameworkGitBook    Framework = "gitbook"
 	FrameworkNextra     Framework = "nextra"
+	FrameworkZeroheight Framework = "zeroheight"
 )
 
 // LinkSelector extracts prioritized links from HTML.
@@ -63,6 +66,11 @@ type Prober interface {
 	//   - known: true if the framework is recognized
 	// Unknown frameworks return (false, false).
 	RequiresJS(framework Framework) (requires bool, known bool)
+
+	// RenderDelay returns the recommended delay after page load for a framework.
+	// Some SPA frameworks need additional time for async content to render.
+	// Returns 0 for frameworks that don't need extra delay.
+	RenderDelay(framework Framework) time.Duration
 }
 
 // LinkSelectorRegistry manages framework-specific selectors.

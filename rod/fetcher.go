@@ -72,6 +72,7 @@ var _ locdoc.Fetcher = (*Fetcher)(nil)
 type Fetcher struct {
 	manager      *BrowserManager
 	fetchTimeout time.Duration
+	renderDelay  time.Duration
 	maxPages     int64
 	closed       atomic.Bool
 	closeOnce    sync.Once
@@ -95,6 +96,16 @@ func WithFetchTimeout(d time.Duration) Option {
 func WithRecycleAfter(n int64) Option {
 	return func(f *Fetcher) {
 		f.maxPages = n
+	}
+}
+
+// WithRenderDelay sets additional wait time after page load for SPA content.
+// Some documentation frameworks (like zeroheight) load content asynchronously
+// and need extra time for the content to appear in the DOM.
+// Defaults to 0 (no extra delay) if not specified.
+func WithRenderDelay(d time.Duration) Option {
+	return func(f *Fetcher) {
+		f.renderDelay = d
 	}
 }
 
@@ -163,24 +174,21 @@ func (f *Fetcher) Fetch(ctx context.Context, url string) (string, error) {
 		return "", err
 	}
 
-	// Wait for page to stabilize. WaitStable combines WaitLoad, WaitRequestIdle,
-	// and WaitDOMStable in parallel - if any one completes, we proceed. This catches
-	// SPA content that loads via async API calls after the initial page load.
-	// The context timeout (fetchTimeout) bounds this for animated sites.
-	// The 300ms interval is used for DOM stability checks.
-	if err := page.WaitStable(300 * time.Millisecond); err != nil {
+	// Wait for page to load. We use WaitLoad instead of WaitStable because WaitStable
+	// requires the DOM to be unchanged for the specified duration, which never happens
+	// on React/JS-heavy sites with continuous animations or state updates.
+	if err := page.WaitLoad(); err != nil {
 		f.closePageAndContext(page, incognito)
 		return "", err
 	}
 
-	// Trigger lazy-loaded content (common in SPA documentation sites like zeroheight).
-	// Some sites load content in phases: initial shell, then API-fetched content,
-	// then lazy-loaded content when scrolled. We wait briefly for initial content,
-	// scroll to trigger lazy loading, then wait for network to settle.
-	time.Sleep(2 * time.Second)
-	_ = page.Mouse.Scroll(0, 500, 1)
-	wait := page.WaitRequestIdle(2*time.Second, nil, nil, nil)
-	wait()
+	// Apply render delay for SPA frameworks that load content asynchronously.
+	// Also scroll to trigger lazy-loaded content that only appears on scroll.
+	if f.renderDelay > 0 {
+		time.Sleep(f.renderDelay)
+		_ = page.Mouse.Scroll(0, 500, 1)
+		time.Sleep(time.Second)
+	}
 
 	// Get rendered HTML including shadow DOM content.
 	// page.HTML() only returns the light DOM, missing content inside shadow roots
@@ -222,6 +230,12 @@ func (f *Fetcher) Close() error {
 		f.closeErr = f.manager.Close()
 	})
 	return f.closeErr
+}
+
+// SetRenderDelay configures the additional wait time for SPA content rendering.
+// This can be called after creation to adjust the delay based on detected framework.
+func (f *Fetcher) SetRenderDelay(d time.Duration) {
+	f.renderDelay = d
 }
 
 // LauncherPID returns the process ID of the browser launcher.

@@ -2,6 +2,7 @@ package goquery
 
 import (
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/fwojciec/locdoc"
@@ -88,6 +89,14 @@ func (d *Detector) Detect(html string) locdoc.Framework {
 		return locdoc.FrameworkNextra
 	}
 
+	// Check for zeroheight markers
+	// zeroheight uses /images/zhapp/ paths and specific styleguide structure
+	if strings.Contains(html, "/images/zhapp/") ||
+		strings.Contains(html, "zeroheight") ||
+		d.hasSelector(doc, ".page--wrapper") {
+		return locdoc.FrameworkZeroheight
+	}
+
 	return locdoc.FrameworkUnknown
 }
 
@@ -154,7 +163,7 @@ func (d *Detector) hasGitBookClasses(doc *goquery.Document) bool {
 func (d *Detector) RequiresJS(framework locdoc.Framework) (requires bool, known bool) {
 	switch framework {
 	// Frameworks that require JavaScript rendering (client-side SPAs)
-	case locdoc.FrameworkGitBook:
+	case locdoc.FrameworkGitBook, locdoc.FrameworkZeroheight:
 		return true, true
 
 	// Frameworks that output static HTML (SSG/SSR)
@@ -165,5 +174,19 @@ func (d *Detector) RequiresJS(framework locdoc.Framework) (requires bool, known 
 	// Unknown framework
 	default:
 		return false, false
+	}
+}
+
+// RenderDelay returns the recommended delay after page load for a framework.
+// Some SPA frameworks need additional time for async content to render.
+// Returns 0 for frameworks that don't need extra delay.
+func (d *Detector) RenderDelay(framework locdoc.Framework) time.Duration {
+	switch framework {
+	// zeroheight loads content in phases via async API calls
+	case locdoc.FrameworkZeroheight:
+		return 3 * time.Second
+
+	default:
+		return 0
 	}
 }
