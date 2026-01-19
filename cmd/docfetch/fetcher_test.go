@@ -3,6 +3,7 @@ package main_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/fwojciec/locdoc"
 	main "github.com/fwojciec/locdoc/cmd/docfetch"
@@ -178,7 +179,10 @@ func TestConcurrentFetcher_FetchAll(t *testing.T) {
 			},
 		}
 
-		cf := main.NewConcurrentFetcher(fetcher, extractor, converter)
+		cf := main.NewConcurrentFetcher(
+			fetcher, extractor, converter,
+			main.WithRetryDelays([]time.Duration{0, 0, 0}), // Zero delays for fast tests
+		)
 
 		urls := []string{
 			"https://example.com/ok1",
@@ -240,5 +244,144 @@ func TestConcurrentFetcher_FetchAll(t *testing.T) {
 		// Then a cancellation error is returned
 		require.Error(t, err)
 		assert.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("retries transient fetch failures", func(t *testing.T) {
+		t.Parallel()
+
+		// Given a fetcher that fails twice then succeeds
+		attempts := 0
+		fetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, _ string) (string, error) {
+				attempts++
+				if attempts < 3 {
+					return "", locdoc.Errorf(locdoc.EINTERNAL, "network error")
+				}
+				return "<html><body>Success</body></html>", nil
+			},
+		}
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Page", ContentHTML: "<p>content</p>"}, nil
+			},
+		}
+		converter := &mock.Converter{
+			ConvertFn: func(_ string) (string, error) {
+				return "markdown content", nil
+			},
+		}
+
+		// With retry delays configured (0 for fast tests)
+		cf := main.NewConcurrentFetcher(
+			fetcher, extractor, converter,
+			main.WithRetryDelays([]time.Duration{0, 0, 0}),
+		)
+
+		// When I fetch a URL
+		pages, err := cf.FetchAll(context.Background(), []string{"https://example.com/page"}, nil)
+
+		// Then the fetch succeeds after retries
+		require.NoError(t, err)
+		require.Len(t, pages, 1)
+		assert.Equal(t, "markdown content", pages[0].Content)
+		assert.Equal(t, 3, attempts, "should have attempted 3 times")
+	})
+
+	t.Run("does not retry extract failures", func(t *testing.T) {
+		t.Parallel()
+
+		// Given an extractor that always fails
+		fetchAttempts := 0
+		extractAttempts := 0
+
+		fetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, _ string) (string, error) {
+				fetchAttempts++
+				return "<html></html>", nil
+			},
+		}
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				extractAttempts++
+				return nil, locdoc.Errorf(locdoc.EINTERNAL, "extraction failed")
+			},
+		}
+		converter := &mock.Converter{
+			ConvertFn: func(_ string) (string, error) {
+				return "content", nil
+			},
+		}
+
+		cf := main.NewConcurrentFetcher(
+			fetcher, extractor, converter,
+			main.WithRetryDelays([]time.Duration{0, 0, 0}),
+		)
+
+		var progressReports []locdoc.FetchProgress
+		progress := func(p locdoc.FetchProgress) {
+			progressReports = append(progressReports, p)
+		}
+
+		// When I fetch a URL with extraction that fails
+		pages, err := cf.FetchAll(context.Background(), []string{"https://example.com/page"}, progress)
+
+		// Then no page is returned
+		require.NoError(t, err) // Overall operation succeeds
+		assert.Empty(t, pages)
+
+		// And extraction was only attempted once (no retry)
+		assert.Equal(t, 1, fetchAttempts, "fetch should succeed on first try")
+		assert.Equal(t, 1, extractAttempts, "extract should not be retried")
+
+		// And progress reports the error
+		require.Len(t, progressReports, 1)
+		assert.Error(t, progressReports[0].Error)
+	})
+
+	t.Run("progress reports final result only after retries", func(t *testing.T) {
+		t.Parallel()
+
+		// Given a fetcher that fails once then succeeds
+		attempts := 0
+		fetcher := &mock.Fetcher{
+			FetchFn: func(_ context.Context, _ string) (string, error) {
+				attempts++
+				if attempts == 1 {
+					return "", locdoc.Errorf(locdoc.EINTERNAL, "network error")
+				}
+				return "<html></html>", nil
+			},
+		}
+		extractor := &mock.Extractor{
+			ExtractFn: func(_ string) (*locdoc.ExtractResult, error) {
+				return &locdoc.ExtractResult{Title: "Page", ContentHTML: "<p></p>"}, nil
+			},
+		}
+		converter := &mock.Converter{
+			ConvertFn: func(_ string) (string, error) {
+				return "content", nil
+			},
+		}
+
+		cf := main.NewConcurrentFetcher(
+			fetcher, extractor, converter,
+			main.WithRetryDelays([]time.Duration{0, 0}),
+		)
+
+		var progressReports []locdoc.FetchProgress
+		progress := func(p locdoc.FetchProgress) {
+			progressReports = append(progressReports, p)
+		}
+
+		// When I fetch a URL that fails then succeeds
+		pages, err := cf.FetchAll(context.Background(), []string{"https://example.com/page"}, progress)
+
+		// Then the page succeeds
+		require.NoError(t, err)
+		require.Len(t, pages, 1)
+
+		// And only one progress report is made (final success, not intermediate failures)
+		require.Len(t, progressReports, 1)
+		assert.NoError(t, progressReports[0].Error, "final progress should show success")
 	})
 }
