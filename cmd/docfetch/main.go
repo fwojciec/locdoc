@@ -107,10 +107,7 @@ func (m *Main) Run(ctx context.Context, args []string, stdout, stderr io.Writer)
 	}
 
 	// Probe to select the appropriate fetcher based on framework requirements
-	fetcher, err := ProbeFetcher(ctx, cli.URL, httpFetcher, rodFetcher, detector)
-	if err != nil {
-		return fmt.Errorf("failed to probe site: %w", err)
-	}
+	fetcher := ProbeFetcher(ctx, cli.URL, httpFetcher, rodFetcher, detector, extractor)
 
 	// Create link selector registry for recursive crawling fallback
 	fallbackSelector := goquery.NewGenericSelector()
